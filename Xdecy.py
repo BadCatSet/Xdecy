@@ -5,8 +5,9 @@ v1.1
 from math import sin
 import random
 
-import pathfinding
 import pygame
+
+import tpath
 
 
 def get_uid():
@@ -349,8 +350,8 @@ class TempText:
             temp_text.remove(self)
 
 
-PF_FINDER = pathfinding.finder.a_star.AStarFinder(
-    diagonal_movement=pathfinding.core.diagonal_movement.DiagonalMovement.always)
+PF_FINDER = tpath.AStarFinder(
+    diagonal_movement=tpath.DiagonalMovement.always)
 
 debug = 0  # DEBUG!
 
@@ -765,7 +766,7 @@ def get_text(mess, font_color=(0, 0, 0), font_type=directory + 'font.ttf', font_
 
 def find_path(mat, start, end):
     mat = [[(1 if mat[i][j] in NAME_BG else 0) for i in range(len(mat))] for j in range(len(mat))]
-    grid = pathfinding.core.grid.Grid(matrix=mat)
+    grid = tpath.Grid(matrix=mat)
     start = grid.node(*start)
     end = grid.node(*end)
 
