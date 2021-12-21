@@ -1,13 +1,19 @@
 """
 v1.1
 """
+tpath_load = False  # use alternative algorithm of pathfinding loader
 
 from math import sin
 import random
 
 import pygame
 
-import tpath
+if tpath_load:
+    from tpath import AStarFinder, DiagonalMovement, Grid
+else:
+    from pathfinding.finder.a_star import AStarFinder
+    from pathfinding.core.diagonal_movement import DiagonalMovement
+    from pathfinding.core.grid import Grid
 
 
 def get_uid():
@@ -350,8 +356,7 @@ class TempText:
             temp_text.remove(self)
 
 
-PF_FINDER = tpath.AStarFinder(
-    diagonal_movement=tpath.DiagonalMovement.always)
+PF_FINDER = AStarFinder(diagonal_movement=DiagonalMovement.always)
 
 debug = 0  # DEBUG!
 
@@ -391,8 +396,6 @@ NAME_SOUNDS = ['death sound', 'hit', 'shlopa sound']
 level = 'test'
 directory = 'assets/'
 difficulty = 1
-
-pl_speed = 6
 
 fire_cooldown = ARROW_MAX_COOLDOWN
 sword_cooldown = 0
@@ -766,7 +769,7 @@ def get_text(mess, font_color=(0, 0, 0), font_type=directory + 'font.ttf', font_
 
 def find_path(mat, start, end):
     mat = [[(1 if mat[i][j] in NAME_BG else 0) for i in range(len(mat))] for j in range(len(mat))]
-    grid = tpath.Grid(matrix=mat)
+    grid = Grid(matrix=mat)
     start = grid.node(*start)
     end = grid.node(*end)
 
