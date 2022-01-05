@@ -13,7 +13,7 @@ from pathfinding.finder.a_star import AStarFinder
 # use alternative way to load pathfinding
 # from tpath import AStarFinder, DiagonalMovement, Grid
 import pygame
-from pygame import Rect
+from pygame import Rect, Surface
 from pygame.transform import scale as pg_scale
 
 
@@ -100,13 +100,13 @@ class Assets:
 
 
 class MyGroup(pygame.sprite.Group):
-    def draw(self, surface: pygame.Surface):
+    def draw(self, surface: Surface):
         for i in self.sprites():
             i.draw(surface)
 
 
 class MySprite(pygame.sprite.Sprite):
-    def draw(self, surface: pygame.Surface):
+    def draw(self, surface: Surface):
         pass
 
 
@@ -122,7 +122,7 @@ class Cell(MySprite):
         self.rect = Rect(x, y, 1, 1)
         self.image = eval(f'assets.{tile}')
 
-    def draw(self, surface: pygame.Surface):
+    def draw(self, surface: Surface):
         coord = (self.rect.x * cell_s, self.rect.y * cell_s)
         surface.blit(self.image, coord)
 
@@ -185,7 +185,7 @@ class Arrow:
             if cells[tx][ty] in assets.NAME_HARD:
                 projectiles.remove(self)
 
-    def draw(self, surface: pygame.Surface):
+    def draw(self, surface: Surface):
         surface.blit(self.image, (self.x * cell_s + self.image_dx, self.y * cell_s + self.image_dy))
 
 
@@ -217,7 +217,7 @@ class Item:
         if self.item == 'item_heart':
             pl.apply_damage(self.amount)
 
-    def draw(self, surface: pygame.Surface):
+    def draw(self, surface: Surface):
         offset = sin((all_time + self.start_time) / 300) * 10
         surface.blit(self.image, (self.x * cell_s, self.y * cell_s + offset))
         surface.blit(get_text(str(self.amount)), (self.x * cell_s, self.y * cell_s + offset))
@@ -247,7 +247,7 @@ class Effect:
 
 class Entity:
     def __init__(self, x, y):
-        self.rect = pygame.Rect(x, y, 1, 1)
+        self.rect = Rect(x, y, 1, 1)
         self.image = None
 
         self.max_health = 0
@@ -284,10 +284,10 @@ class Entity:
             if t[0] == 'health':
                 self.apply_damage(t[1])
 
-    def draw(self, surface: pygame.Surface):
+    def draw(self, surface: Surface):
         surface.blit(self.image, (self.rect.x * cell_s, self.rect.y * cell_s))
 
-    def draw_health(self, surface: pygame.Surface):
+    def draw_health(self, surface: Surface):
         pygame.draw.rect(surface, (100, 100, 100), (self.rect.x * cell_s,
                                                     self.rect.y * cell_s - 10, half, 5))
         pygame.draw.rect(surface, (255, 0, 0), (self.rect.x * cell_s, self.rect.y * cell_s - 10,
@@ -312,7 +312,7 @@ class Player(Entity):
         self.arrows = 0
 
     def move(self, kw, ka, ks, kd):
-        dx, dy = (kd - ka) * self.speed, (ks - kw) * self.speed
+        dx, dy = (kd - ka) * self.speed, (ks - kw) * self.speed  # всё правильно
         if all_time > 3000:
             print(dx, dy)
 
@@ -322,10 +322,10 @@ class Player(Entity):
             dlx = 1
         else:
             dlx = 0
-            if can_move(self, dx, 0) or not dx:
+            if can_move(self, dx, 0):
                 self.rect.x += dx
-            elif can_move(self, dx // abs(dx), 0):
-                self.rect.x += dx // abs(dx)
+            elif can_move(self, sign(dx), 0):
+                self.rect.x += sign(dx)
 
         if self.rect.y + dy < 0:
             dly = -1
@@ -333,10 +333,10 @@ class Player(Entity):
             dly = 1
         else:
             dly = 0
-            if can_move(self, 0, dy) or not dy:
+            if can_move(self, 0, dy):
                 self.rect.y += dy
-            elif can_move(self, 0, dy // abs(dy)):
-                self.rect.y += dy // abs(dy)
+            elif can_move(self, 0, sign(dy)):
+                self.rect.y += sign(dy)
         return dlx, dly
 
 
@@ -360,8 +360,7 @@ class Zombie(Entity):
                 pl.apply_damage(self.damage + random.randrange(-5, 9))
 
         if (pl.rect.x - self.rect.x) ** 2 + (pl.rect.y - self.rect.y) ** 2 >= cell_s ** 2:
-            act = find_path(cells, (self.rect.x, self.rect.y),
-                            (pl.rect.x, pl.rect.y))
+            act = find_path(cells, self.rect.x, self.rect.y, pl.rect.x, pl.rect.y)
             if len(act) > 1:
                 act = act[1]
                 dx = clip_value(act[0] + 0.25 - self.rect.x, self.speed, -self.speed)
@@ -389,7 +388,7 @@ class Skeleton(Entity):
 
         for x, y in unique_pairs():
             if cells[x][y].tile not in assets.NAME_BG:
-                if pygame.Rect(x, y, 1, 1).clipline(
+                if Rect(x, y, 1, 1).clipline(
                         self.rect.centerx, self.rect.centery, pl.rect.centerx, pl.rect.centery):
                     can_see = False
                     break
@@ -404,7 +403,7 @@ class Skeleton(Entity):
                 self.cooldown = all_time + self.max_cooldown + random.randrange(-100, 100)
 
         else:
-            act = find_path(cells, (self.rect.x, self.rect.y), (pl.rect.x, pl.rect.y))
+            act = find_path(cells, self.rect.x, self.rect.y, pl.rect.x, pl.rect.y)
             if len(act):
                 act = act[1]
                 dx = clip_value(act[0] + 0.25 - self.rect.x, self.speed, -self.speed)
@@ -498,7 +497,7 @@ class TempText:
         else:
             temp_text.remove(self)
 
-    def draw(self, surface: pygame.Surface):
+    def draw(self, surface: Surface):
         surface.blit(self.text, (self.x, self.y))
 
 
@@ -867,8 +866,7 @@ def get_text(mess, font_color=(0, 0, 0), font_type=assets.PATH + 'font.ttf', fon
     return pygame.font.Font(font_type, font_size).render(mess, True, font_color)
 
 
-def find_path(mat, start, end):
-    (x1, y1), (x2, y2) = start, end
+def find_path(mat, x1, y1, x2, y2):
     mat = [[(1 if mat[i][j] in assets.NAME_BACKGROUND else 0)
             for i in range(size)] for j in range(size)]
     grid = Grid(matrix=mat)
@@ -913,6 +911,14 @@ def count_damage(c):
 
 def clip_value(v, ma, mi):
     return max(min(v, ma), mi)
+
+
+def sign(v):
+    if v < 0:
+        return -1
+    if v > 0:
+        return 1
+    return 0
 
 
 run_game('test')
