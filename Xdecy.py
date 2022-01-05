@@ -34,6 +34,9 @@ class Location:
     def __getitem__(self, c):
         return self.cells[c[0]][c[1]]
 
+    def __repr__(self):
+        return str(self.cells) + '|' + str(self.enemies) + '|' + str(self.items)
+
 
 class Arrow:
     def __init__(self, x, y, dx, dy, speed):
@@ -102,6 +105,9 @@ class Item:
         if self.item == 'item_heart':
             pl.apply_damage(self.amount)
 
+    def __repr__(self):
+        return f"{type(self).__name__}({self.x}, {self.y}, '{self.item}', {self.amount})"
+
 
 class Effect:
     def __init__(self, sort, time, amplifier, cooldown):
@@ -160,6 +166,9 @@ class Entity:
             t = i.get()
             if t[0] == 'health':
                 self.apply_damage(t[1])
+
+    def __repr__(self):
+        return type(self).__name__ + '(' + str(self.r.x) + ', ' + str(self.r.y) + ')'
 
 
 class Player(Entity):
