@@ -25,7 +25,10 @@ class NewField:
                              'b5': load_image(f'{self.path}\\assets2\\b5.png', (50, 50)),
                              'b6': load_image(f'{self.path}\\assets2\\b6.png', (50, 50)),
                              'b7': load_image(f'{self.path}\\assets2\\b7.png', (50, 50)),
-                             'b8': load_image(f'{self.path}\\assets2\\b8.png', (50, 50))}
+                             'b8': load_image(f'{self.path}\\assets2\\b8.png', (50, 50)),
+                             'h0': load_image(f'{self.path}\\assets2\\h0.png', (50, 50)),
+                             'h1': load_image(f'{self.path}\\assets2\\h1.png', (50, 50)),
+                             'h2': load_image(f'{self.path}\\assets2\\h2.png', (50, 50))}
         self.field = [['b0' for _ in range(15)] for _ in range(15)]
         self.x0, self.y0 = ((monitor_size[1] - 750) // 2), ((monitor_size[1] - 750) // 2)
 
