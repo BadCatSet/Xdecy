@@ -1,6 +1,5 @@
-# попытка не переписывать программу, а изменить
 """
-v1.1
+v2.-1
 """
 
 from math import sin
@@ -11,13 +10,12 @@ import random
 from pathfinding.core.diagonal_movement import DiagonalMovement
 from pathfinding.core.grid import Grid
 from pathfinding.finder.a_star import AStarFinder
+# use alternative way to load pathfinding
+# from tpath import AStarFinder, DiagonalMovement, Grid
 import pygame
 from pygame import Rect
 from pygame.transform import scale as pg_scale
 
-
-# use alternative way to load pathfinding
-# from tpath import AStarFinder, DiagonalMovement, Grid
 
 def get_uid():
     global last_given_uid
@@ -114,7 +112,6 @@ class MySprite(pygame.sprite.Sprite):
 
 class Cell(MySprite):
     def __init__(self, x, y, tile, owner):
-        print('init! cell')
         if tile == 'b0':
             super().__init__(owner.bg_group)
             tile = assets.get_bg()
@@ -127,7 +124,6 @@ class Cell(MySprite):
 
     def draw(self, surface: pygame.Surface):
         coord = (self.rect.x * cell_s, self.rect.y * cell_s)
-        print(coord)
         surface.blit(self.image, coord)
 
 
@@ -190,7 +186,7 @@ class Arrow:
                 projectiles.remove(self)
 
     def draw(self, surface: pygame.Surface):
-        pass  # todo
+        surface.blit(self.image, (self.x * cell_s + self.image_dx, self.y * cell_s + self.image_dy))
 
 
 class Item:
@@ -315,25 +311,32 @@ class Player(Entity):
         self.potions = 0
         self.arrows = 0
 
-    def move(self, dx, dy):
-        dx = dx * self.speed
-        dy = dy * self.speed
-        dlx, dly = 0, 0
-        if 0 <= self.rect.x + dx <= size - 0.5:
-            if not any_collisions(self, dx, 0):
-                self.rect.x += dx
-            elif not any_collisions(self, dx // abs(dx), 0):
-                self.rect.x += dx // abs(dx)
-        else:
-            dlx = -1 if self.rect.x + dx < 0 else 1
+    def move(self, kw, ka, ks, kd):
+        dx, dy = (kd - ka) * self.speed, (ks - kw) * self.speed
+        if all_time > 3000:
+            print(dx, dy)
 
-        if 0 <= self.rect.y + dy <= size - 0.5:
-            if not any_collisions(self, 0, dy):
-                self.rect.y += dy
-            elif not any_collisions(self, 0, dy // abs(dy)):
-                self.rect.y += dy // abs(dy)
+        if self.rect.x + dx < 0:
+            dlx = -1
+        elif self.rect.x + dx > size - 0.5:
+            dlx = 1
         else:
-            dly = -1 if self.rect.y + dy < 0 else 1
+            dlx = 0
+            if can_move(self, dx, 0) or not dx:
+                self.rect.x += dx
+            elif can_move(self, dx // abs(dx), 0):
+                self.rect.x += dx // abs(dx)
+
+        if self.rect.y + dy < 0:
+            dly = -1
+        elif self.rect.y + dy > size - 0.5:
+            dly = 1
+        else:
+            dly = 0
+            if can_move(self, 0, dy) or not dy:
+                self.rect.y += dy
+            elif can_move(self, 0, dy // abs(dy)):
+                self.rect.y += dy // abs(dy)
         return dlx, dly
 
 
@@ -363,9 +366,9 @@ class Zombie(Entity):
                 act = act[1]
                 dx = clip_value(act[0] + 0.25 - self.rect.x, self.speed, -self.speed)
                 dy = clip_value(act[1] + 0.25 - self.rect.y, self.speed, -self.speed)
-                if not any_collisions(self, dx, 0):
+                if can_move(self, dx, 0):
                     self.rect.x += dx
-                if not any_collisions(self, 0, dy):
+                if can_move(self, 0, dy):
                     self.rect.y += dy
 
 
@@ -406,9 +409,9 @@ class Skeleton(Entity):
                 act = act[1]
                 dx = clip_value(act[0] + 0.25 - self.rect.x, self.speed, -self.speed)
                 dy = clip_value(act[1] + 0.25 - self.rect.x, self.speed, -self.speed)
-                if not any_collisions(self, dx, 0):
+                if can_move(self, dx, 0):
                     self.rect.x += dx
-                if not any_collisions(self, 0, dy):
+                if can_move(self, 0, dy):
                     self.rect.y += dy
 
 
@@ -434,13 +437,13 @@ class Spider(Entity):
         if (self.rect.x - pl.rect.x) ** 2 + (self.rect.y - pl.rect.y) ** 2 >= enemy_radius ** 2:
             dx = clip_value(pl.rect.x - self.rect.x, self.speed, -self.speed)
             dy = clip_value(pl.rect.y - self.rect.y, self.speed, -self.speed)
-            if not any_collisions(self, dx, 0, c=False):
-                if not any_collisions(self, dx, 0, m=False):
+            if can_move(self, dx, 0, c=False):
+                if can_move(self, dx, 0, m=False):
                     self.rect.x += dx
                 else:
                     self.rect.x += dx // 2
-            if not any_collisions(self, 0, dy, c=False):
-                if not any_collisions(self, 0, dy, m=False):
+            if can_move(self, 0, dy, c=False):
+                if can_move(self, 0, dy, m=False):
                     self.rect.y += dy
                 else:
                     self.rect.y += dy // 2
@@ -482,21 +485,21 @@ class TempText:
     def __init__(self, x, y, text, text_color, r=20, text_size=30):
         self.x = x + random.randrange(-r, r)
         self.y = y + random.randrange(-r, r)
-        self.font = pygame.font.Font(assets.PATH + 'font.ttf', text_size).render(text, True,
+        self.text = pygame.font.Font(assets.PATH + 'font.ttf', text_size).render(text, True,
                                                                                  text_color)
-        self.time = 0
-
-    def get(self):
-        return self.font
+        self.start_time = all_time
 
     def update(self):
-        self.time += 1
-        if self.time < FPS // 2:
-            self.y -= 50 // FPS
+        time = all_time - self.start_time
+        if time < FPS:
+            self.y -= 70 / FPS
+        elif time < FPS * 2:
+            self.text.set_alpha(255 - (time - FPS) // 2)
         else:
-            self.font.set_alpha(255 - (self.time - 499) // 2)
-        if self.y < -50:
             temp_text.remove(self)
+
+    def draw(self, surface: pygame.Surface):
+        surface.blit(self.text, (self.x, self.y))
 
 
 pygame.init()
@@ -680,7 +683,7 @@ def run_game(path):
         pl.update(location.cells)
         shlopa_ending = pl.health <= 0
         pl.check_damage_arrow()
-        dlx, dly = pl.move(keys[pygame.K_d] - keys[pygame.K_a], keys[pygame.K_s] - keys[pygame.K_w])
+        dlx, dly = pl.move(keys[pygame.K_w], keys[pygame.K_a], keys[pygame.K_s], keys[pygame.K_d])
         change = False
         if dlx and not location.enemies:
             if (pl.lx + dlx, pl.ly) in locations_names:
@@ -706,7 +709,7 @@ def run_game(path):
 
         # temporary text
         for i in temp_text:
-            i.update(time_d)
+            i.update()
 
         # mag circles
         for i in mag_circles:
@@ -793,8 +796,7 @@ def display_update(location: Location):
 
     # projectiles
     for i in projectiles:
-        display.blit(i.image, ((i.x + i.image_dx) * cell_s,
-                               (i.y + i.image_dy) * cell_s))
+        i.draw(display)
 
     # enemies and steve
     for i in location.enemies + [pl]:
@@ -804,7 +806,7 @@ def display_update(location: Location):
 
     # template text
     for i in temp_text:
-        display.blit(i.get(), (i.x, i.y))
+        i.draw(display)
 
     # items
     for i in location.items:
@@ -870,7 +872,7 @@ def find_path(mat, start, end):
     mat = [[(1 if mat[i][j] in assets.NAME_BACKGROUND else 0)
             for i in range(size)] for j in range(size)]
     grid = Grid(matrix=mat)
-    start = grid.node(int(x1), int(x2))
+    start = grid.node(int(x1), int(y1))
     end = grid.node(int(x2), int(y2))
 
     path, runs = PF_FINDER.find_path(start, end, grid)
@@ -883,20 +885,22 @@ def unique_pairs(a=size, b=size):
             yield i, j
 
 
-def any_collisions(self, x, y, c=True, m=True):
+def can_move(self, dx, dy, c=True, m=True):
     location = locations[(pl.lx, pl.ly)]
     cells = location.cells
-    rect = self.rect.move(x, y)
+    rect = self.rect.move(dx, dy)
     if c:
-        for i, j in unique_pairs():
-            if cells[i][j] in assets.NAME_HARD:
-                if Rect(i, j, 1, 1).colliderect(rect):
-                    return True
+        for x, y in unique_pairs():
+            if cells[x][y].tile in assets.NAME_HARD:
+                if Rect(x, y, 1, 1).colliderect(rect):
+                    return False
     if m:
-        for i in (set(location.enemies) | {pl}) - {self}:
+        for i in location.enemies + [pl]:
+            if i == self:
+                continue
             if i.rect.colliderect(rect):
-                return True
-    return False
+                return False
+    return True
 
 
 def collision_with_circle(i: Entity, x, y, r):
