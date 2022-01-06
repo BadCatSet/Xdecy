@@ -13,8 +13,9 @@ from pathfinding.finder.a_star import AStarFinder
 # use alternative way to load pathfinding
 # from tpath import AStarFinder, DiagonalMovement, Grid
 import pygame
-from pygame import Rect, Surface
+from pygame import Surface
 from pygame.transform import scale as pg_scale
+import pyrect
 
 
 def get_uid():
@@ -24,6 +25,7 @@ def get_uid():
 
 
 def terminate():
+    print(pl.rect)
     pygame.quit()
     exit()
 
@@ -41,6 +43,16 @@ def set_cell_size(new_cell_size):
     splash_potion_radius = 1.2
     enemy_radius = 1
     arrow_size = (cell_s, cell_s * 3 // 8)
+
+
+class Rect(pyrect.Rect):
+    x: int
+    y: int
+    w: int
+    h: int
+
+    def clipline(self, centerx, centery, centerx1, centery1):
+        return False
 
 
 class Assets:
@@ -135,11 +147,13 @@ class Location:
         self.enemies = enemies
         self.items = items
 
-    def __setitem__(self, c, value):
-        self.cells[c[0]][c[1]] = value
+    def make_bg(self, x, y):
+        self.cells[x][y].kill()
+        self.cells[x][y] = Cell(x, y, 'b0', self)
 
-    def __getitem__(self, c):
-        return self.cells[c[0]][c[1]]
+    def __getitem__(self, coord):
+        x, y = coord
+        return self.cells[x][y]
 
     def __repr__(self):
         return self.__dict__
@@ -150,10 +164,8 @@ class Arrow:
 
         self.x = x
         self.y = y
-        self.d = pygame.Vector2(dx, dy).normalize() * (speed // -300 + 0.2)
+        self.d = pygame.Vector2(dx, dy).normalize() * interpolate(speed, -5000, 0, 0.5, 0.1)
         self.angle = self.d.as_polar()[1]
-
-        self.uid = get_uid()
 
         self.image = pygame.transform.rotate(assets.arrow, -self.angle)
         self.image.set_colorkey((255, 255, 255))
@@ -168,7 +180,8 @@ class Arrow:
 
         self.forbidden_damages = []
 
-    def update(self, cells):
+    def update(self):
+        cells = location.cells
         self.x += self.d.x
         self.y += self.d.y
 
@@ -176,16 +189,17 @@ class Arrow:
             projectiles.remove(self)
             return
 
-        tx, ty = int(self.x // cell_s), int(self.y // cell_s)
-        if 0 <= tx < len(cells) and 0 <= ty < len(cells):
-            if cells[tx][ty] in assets.NAME_SOFT:
-                projectiles.remove(self)
-                locations[(pl.lx, pl.ly)][tx, ty] = assets.get_bg()
-                return True
-            if cells[tx][ty] in assets.NAME_HARD:
-                projectiles.remove(self)
+        tx, ty = int(self.x), int(self.y)
+
+        if cells[tx][ty].tile in assets.NAME_SOFT:
+            location.make_bg(tx, ty)
+            projectiles.remove(self)
+            return
+        if cells[tx][ty].tile in assets.NAME_HARD:
+            projectiles.remove(self)
 
     def draw(self, surface: Surface):
+        # pygame.draw.circle(surface, (255, 0, 0), (self.x * cell_s, self.y * cell_s), 10)
         surface.blit(self.image, (self.x * cell_s + self.image_dx, self.y * cell_s + self.image_dy))
 
 
@@ -233,6 +247,11 @@ class Effect:
         self.amplifier = amplifier
         self.cooldown = all_time
         self.max_cooldown = cooldown
+        if sort == 'health':
+            if amplifier > 0:
+                self.image = assets.regeneration
+            else:
+                self.image = assets.poison
 
     def get(self):
         if self.cooldown < all_time:
@@ -244,10 +263,13 @@ class Effect:
     def check(self):
         return self.time_to_del < all_time
 
+    def draw(self, surface: Surface, n):
+        surface.blit(self.image, (monitor_size[0] - half * n, 0))
+
 
 class Entity:
     def __init__(self, x, y):
-        self.rect = Rect(x, y, 1, 1)
+        self.rect = Rect(x, y, 1, 1, enableFloat=True)
         self.image = None
 
         self.max_health = 0
@@ -265,20 +287,20 @@ class Entity:
         if int(delta) < 0:
             pygame.mixer.Sound.play(assets.hit)
         if int(delta):
-            temp_text.append(TempText(self.rect.centerx, self.rect.centery, str(int(delta)),
-                                      TT_COLOR[1 if self.uid else 0]))
+            temp_text.append(TempText(self.rect.centerx * cell_s, self.rect.centery * cell_s,
+                                      str(int(delta)),
+                                      TT_COLOR[0 if self.uid == pl.uid else 1]))
 
     def check_damage_arrow(self):
         for i in projectiles:
-            if self.rect.collidepoint(i.x, i.y):
+            if self.rect.collide((i.x, i.y)):
                 if self.uid not in i.forbidden_damages:
                     i.forbidden_damages.append(self.uid)
-                    if self.health > 0:
-                        self.apply_damage(i.damage)
-                        if self.health <= 0:
-                            projectiles.remove(i)
+                    self.apply_damage(i.damage)
+                    if self.health <= 0:
+                        projectiles.remove(i)
 
-    def update(self, cells):
+    def update(self):
         for i in self.effects:
             t = i.get()
             if t[0] == 'health':
@@ -307,15 +329,12 @@ class Player(Entity):
         self.ly = 0
         self.max_health = 200
         self.health = self.max_health
-        self.speed = 1 / FPS
+        self.speed = 4 / FPS
         self.potions = 0
         self.arrows = 0
 
     def move(self, kw, ka, ks, kd):
-        dx, dy = (kd - ka) * self.speed, (ks - kw) * self.speed  # всё правильно
-        if all_time > 3000:
-            print(dx, dy)
-
+        dx, dy = (kd - ka) * self.speed, (ks - kw) * self.speed  # здесь всё правильно
         if self.rect.x + dx < 0:
             dlx = -1
         elif self.rect.x + dx > size - 0.5:
@@ -351,9 +370,9 @@ class Zombie(Entity):
         self.max_health = 500 * difficulty
         self.health = self.max_health
 
-    def update(self, cells):
-        super().update(cells)
-
+    def update(self):
+        super().update()
+        cells = location.cells
         if self.cooldown < all_time:
             if (self.rect.x - pl.rect.x) ** 2 + (self.rect.y - pl.rect.y) ** 2 < enemy_radius ** 2:
                 self.cooldown = all_time + self.max_cooldown + random.randrange(-400, 500)
@@ -382,8 +401,9 @@ class Skeleton(Entity):
         self.max_health = 80 * difficulty
         self.health = self.max_health
 
-    def update(self, cells):
-        super().update(cells)
+    def update(self):
+        super().update()
+        cells = location.cells
         can_see = True
 
         for x, y in unique_pairs():
@@ -396,7 +416,7 @@ class Skeleton(Entity):
             if self.cooldown < all_time:
                 arrow = Arrow(self.rect.centerx, self.rect.centery,
                               pl.rect.x - self.rect.x, pl.rect.y - self.rect.y,
-                              -2000 * difficulty)
+                              -200 * difficulty)
                 for i in locations[(pl.lx, pl.ly)].enemies:
                     arrow.forbidden_damages.append(i.uid)
                 projectiles.append(arrow)
@@ -425,8 +445,8 @@ class Spider(Entity):
         self.max_health = 450 * difficulty
         self.health = self.max_health
 
-    def update(self, cells):
-        super().update(cells)
+    def update(self):
+        super().update()
 
         if self.cooldown < all_time:
             if (self.rect.x - pl.rect.x) ** 2 + (self.rect.y - pl.rect.y) ** 2 < enemy_radius ** 2:
@@ -436,13 +456,13 @@ class Spider(Entity):
         if (self.rect.x - pl.rect.x) ** 2 + (self.rect.y - pl.rect.y) ** 2 >= enemy_radius ** 2:
             dx = clip_value(pl.rect.x - self.rect.x, self.speed, -self.speed)
             dy = clip_value(pl.rect.y - self.rect.y, self.speed, -self.speed)
-            if can_move(self, dx, 0, c=False):
-                if can_move(self, dx, 0, m=False):
+            if can_move(self, dx, 0, mode='m'):
+                if can_move(self, dx, 0, mode='c'):
                     self.rect.x += dx
                 else:
                     self.rect.x += dx // 2
-            if can_move(self, 0, dy, c=False):
-                if can_move(self, 0, dy, m=False):
+            if can_move(self, 0, dy, mode='m'):
+                if can_move(self, 0, dy, mode='c'):
                     self.rect.y += dy
                 else:
                     self.rect.y += dy // 2
@@ -452,17 +472,17 @@ class Mag(Entity):
     def __init__(self, x, y):
         super().__init__(x, y)
         self.image = assets.mag
-        self.max_cooldown = random.randrange(2000, 3000)
+        self.max_cooldown = lambda: random.randrange(1000, 3500)
         self.cooldown = 1000 + all_time
         self.speed = 1.1 / FPS
         self.damage = -100 * difficulty
         self.max_health = 125 * difficulty
         self.health = self.max_health
 
-    def update(self, cells):
-        super().update(cells)
+    def update(self):
+        super().update()
         if self.cooldown < all_time:
-            self.cooldown = all_time + self.max_cooldown + random.randrange(-1000, 500)
+            self.cooldown = all_time + self.max_cooldown()
             multiplier = random.randrange(9, 12) / 10
             mag_circles.append(MagCircle(pl.rect.centerx, pl.rect.centery, self.damage * multiplier,
                                          0.5 * multiplier, 3000))
@@ -476,8 +496,15 @@ class MagCircle:
         self.d = d
         self.detonation_time = time_delta + all_time
 
-    def check(self):
-        return self.detonation_time < all_time
+    def update(self):
+        if self.detonation_time < all_time:
+            if collision_with_circle(pl, self.x + 0.25, self.y + 0.25, self.s):
+                pl.apply_damage(self.d)
+            mag_circles.remove(self)
+
+    def draw(self, surface: Surface):
+        pygame.draw.circle(surface, (200, 30, 0), (self.x * cell_s, self.y * cell_s),
+                           self.s * cell_s)
 
 
 class TempText:
@@ -536,8 +563,6 @@ SWORD_DEFAULT_COOLDOWN = 360
 TT_COLOR = [(255, 70, 70), (255, 255, 70)]
 
 fire_cooldown = ARROW_MAX_COOLDOWN
-sword_cooldown = 0
-sword_angle = 0
 all_time = 0
 
 size = 0
@@ -566,7 +591,9 @@ locations_names = []
 
 set_cell_size(70)
 assets = Assets('assets2/')
-pl = Player(0, 0)  # will be set in run_game()
+# will be set in run_game()
+pl = Player(0, 0)
+location = Location([], [], [])
 
 
 def load_location(path, coord):
@@ -602,16 +629,14 @@ def load_level(path):
 
 
 def run_game(path):
-    global fire_cooldown, all_time, sword_angle, sword_cooldown, last_given_uid, size, locations
+    global fire_cooldown, all_time, size, locations, location
     shlopa_ending = False
     throwing_mode = False
-    sword_uid = -1
     load_level(path)
     location = locations[(0, 0)]
 
     while pl.health > 0:
         time_d = clock.tick(FPS)
-        sword_angle += time_d
 
         keys = pygame.key.get_pressed()
         mouse = pygame.mouse.get_pressed(3)
@@ -620,17 +645,15 @@ def run_game(path):
 
         for event in events:
             if event.type == pygame.QUIT:
-                pygame.quit()
-                quit()
+                terminate()
             if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
-                pygame.quit()
-                quit()
+                terminate()
 
         if keys[pygame.K_f] and pl.potions:
             throwing_mode = True
-            display_update(location)
+            display_update()
             pygame.draw.circle(display, (200, 200, 200), (mouse_pos[0], mouse_pos[1]),
-                               splash_potion_radius, 2)
+                               splash_potion_radius * cell_s, 2)
             pygame.display.flip()
             continue
 
@@ -639,7 +662,7 @@ def run_game(path):
             pl.potions -= 1
 
             for entity in location.enemies + [pl]:
-                if collision_with_circle(entity, mouse_pos[0], mouse_pos[1],
+                if collision_with_circle(entity, mouse_pos[0] // cell_s, mouse_pos[1] // cell_s,
                                          splash_potion_radius):
                     if type(entity) in {Skeleton, Zombie, Mag}:
                         entity.apply_damage(-SPLASH_POTION_AMPLIFIER)
@@ -661,25 +684,16 @@ def run_game(path):
 
         if mouse[0] and (fire_cooldown < 0) and pl.arrows:
             pl.arrows -= 1
-            arrow = Arrow(pl.rect.x + quarter, pl.rect.y + quarter,
-                          mouse_pos[0] - pl.rect.x * cell_s - quarter,
-                          mouse_pos[1] - pl.rect.y * cell_s - quarter,
+            arrow = Arrow(pl.rect.centerx, pl.rect.centery,
+                          mouse_pos[0] - pl.rect.x * cell_s,
+                          mouse_pos[1] - pl.rect.y * cell_s,
                           fire_cooldown)
-            arrow.forbidden_damages.append(0)
+            arrow.forbidden_damages.append(pl.uid)
             projectiles.append(arrow)
-
             fire_cooldown = ARROW_DEFAULT_COOLDOWN
 
-        if mouse[2] and (fire_cooldown < 0):
-            sword_angle = pygame.Vector2(
-                pl.rect.centerx * cell_s - mouse_pos[0],
-                pl.rect.centery * cell_s - mouse_pos[1]).as_polar()[1]
-            sword_uid = get_uid()
-            sword_cooldown = all_time + SWORD_DEFAULT_COOLDOWN
-            fire_cooldown = SWORD_DEFAULT_COOLDOWN
-
         # player
-        pl.update(location.cells)
+        pl.update()
         shlopa_ending = pl.health <= 0
         pl.check_damage_arrow()
         dlx, dly = pl.move(keys[pygame.K_w], keys[pygame.K_a], keys[pygame.K_s], keys[pygame.K_d])
@@ -687,12 +701,12 @@ def run_game(path):
         if dlx and not location.enemies:
             if (pl.lx + dlx, pl.ly) in locations_names:
                 pl.lx += dlx
-                pl.rect.x = DISPLAY_S - half - pl.rect.x
+                pl.rect.x = size - 0.5 - pl.rect.x
                 change = True
         if dly and not location.enemies:
             if (pl.lx, pl.ly + dly) in locations_names:
                 pl.ly += dly
-                pl.rect.y = DISPLAY_S - half - pl.rect.y
+                pl.rect.y = size - 0.5 - pl.rect.y
                 change = True
         if change:
             location = locations[(pl.lx, pl.ly)]
@@ -703,8 +717,7 @@ def run_game(path):
 
         # projectiles
         for i in projectiles:
-            if i.update(location.cells):
-                location = locations[(pl.lx, pl.ly)]
+            i.update()
 
         # temporary text
         for i in temp_text:
@@ -712,23 +725,13 @@ def run_game(path):
 
         # mag circles
         for i in mag_circles:
-            if i.check():
-                if collision_with_circle(pl, i.x + quarter, i.y + quarter, i.s):
-                    pl.apply_damage(i.d)
-                mag_circles.remove(i)
+            i.update()
 
         # enemies
-        sword_line = pygame.Vector2()
-        sword_line.from_polar((player_radius, sword_angle))
-        for i in location.enemies:
-            i.update(location.cells)
-            i.check_damage_arrow()
-            if sword_cooldown > all_time and ((sword_uid, i.uid) not in forbidden_damages):
-                if i.rect.clipline(pl.rect.centerx, pl.rect.centery, pl.rect.centerx + sword_line.x,
-                                   pl.rect.centery + sword_line.y):
-                    forbidden_damages.append((sword_uid, i.uid))
-                    i.apply_damage(SWORD_DAMAGE)
 
+        for i in location.enemies:
+            i.update()
+            i.check_damage_arrow()
             if i.health <= 0:
                 loot = DROP_CHANCES[type(i)]
                 for d in enumerate(loot):
@@ -744,7 +747,7 @@ def run_game(path):
                 if j.check():
                     i.effects.remove(j)
 
-        display_update(location)
+        display_update()
         pygame.display.flip()
     pygame.mixer.stop()
     pygame.mixer.Sound.play(assets.death_sound)
@@ -753,11 +756,9 @@ def run_game(path):
         timer += clock.tick(60)
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
-                pygame.quit()
-                quit()
+                terminate()
             if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
-                pygame.quit()
-                quit()
+                terminate()
         display.blit(assets.death_screen, (0, 0))
         pygame.display.flip()
     if not pl.lx and not pl.ly and pl.rect.x == pl.rect.y == cell_s and shlopa_ending:
@@ -767,28 +768,26 @@ def run_game(path):
             timer += clock.tick(60)
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
-                    pygame.quit()
-                    quit()
+                    terminate()
                 if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
-                    pygame.quit()
-                    quit()
+                    terminate()
             display.blit(assets.shlopa_screen, (0, 0))
             pygame.display.flip()
 
 
-def display_update(location: Location):
+def display_update():
     display.fill((0, 0, 0))
     # bg
     location.bg_group.draw(display)
 
     # mag circles
     for i in mag_circles:
-        pygame.draw.circle(display, (200, 30, 0), (i.x * cell_s, i.y * cell_s), i.s)
+        i.draw(display)
 
     # sword circle
     pygame.draw.circle(display, (100, 100, 100),
-                       (pl.rect.x * cell_s + quarter, pl.rect.y + quarter),
-                       player_radius, 2)
+                       (pl.rect.x * cell_s + quarter, pl.rect.y * cell_s + quarter),
+                       player_radius * cell_s, 2)
 
     # cells
     location.block_group.draw(display)
@@ -811,14 +810,6 @@ def display_update(location: Location):
     for i in location.items:
         i.draw(display)
 
-    # sword
-    if sword_cooldown > all_time:
-        sword_line = pygame.Vector2()
-        sword_line.from_polar((player_radius, sword_angle))
-        pygame.draw.line(display, (255, 0, 0), (pl.rect.centerx, pl.rect.centery),
-                         (pl.rect.centerx + sword_line.x, pl.rect.centery + sword_line.y),
-                         4)
-
     # gui
     tx = cell_s + half + 10
     ty = 1
@@ -837,16 +828,9 @@ def display_update(location: Location):
         pygame.draw.rect(display, (255, 0, 0), (tx, ty, tw, th))
     if fire_cooldown <= 0:
         display.blit(get_text(str(count_damage(fire_cooldown))), (tx, ty))
-    eff_number = 1
-    for i in pl.effects:
-        texture = ''
-        if i.sort == 'health':
-            if i.amplifier > 0:
-                texture = assets.regeneration
-            else:
-                texture = assets.poison
-        display.blit(texture, (DISPLAY_S - half * eff_number, 0))
 
+    for n, i in enumerate(pl.effects):
+        i.draw(display, n)
     # arrows and potions
     pygame.draw.rect(display, (100, 100, 100), (0, 0, half * 3, half))
     display.blit(assets.item_arrow, (0, 0))
@@ -867,6 +851,7 @@ def get_text(mess, font_color=(0, 0, 0), font_type=assets.PATH + 'font.ttf', fon
 
 
 def find_path(mat, x1, y1, x2, y2):
+    print(x1, y1, x2, y2)
     mat = [[(1 if mat[i][j] in assets.NAME_BACKGROUND else 0)
             for i in range(size)] for j in range(size)]
     grid = Grid(matrix=mat)
@@ -877,26 +862,28 @@ def find_path(mat, x1, y1, x2, y2):
     return path
 
 
-def unique_pairs(a=size, b=size):
-    for i in range(a):
-        for j in range(b):
-            yield i, j
+def unique_pairs(r_x=(0, size), r_y=(0, size)):
+    for x in range(*r_x):
+        for y in range(*r_y):
+            yield x, y
 
 
-def can_move(self, dx, dy, c=True, m=True):
-    location = locations[(pl.lx, pl.ly)]
-    cells = location.cells
-    rect = self.rect.move(dx, dy)
-    if c:
-        for x, y in unique_pairs():
-            if cells[x][y].tile in assets.NAME_HARD:
-                if Rect(x, y, 1, 1).colliderect(rect):
+def can_move(self, dx, dy, mode='cm'):
+    rect = Rect(self.rect.x + dx, self.rect.y + dy, 0.5, 0.5, enableFloat=True)
+
+    if 'c' in mode:
+        mx, my = int(rect.x), int(rect.y)
+        for x, y in unique_pairs((mx, mx + 2), (my, my + 2)):
+            if x < 0 or x > size - 1 or y < 0 or y > size - 1:
+                continue
+            if location[x, y].tile not in assets.NAME_BACKGROUND:
+                if Rect(x, y, 1, 1).collide(rect):
                     return False
-    if m:
+    if 'm' in mode:
         for i in location.enemies + [pl]:
             if i == self:
                 continue
-            if i.rect.colliderect(rect):
+            if i.rect.collide(rect):
                 return False
     return True
 
@@ -919,6 +906,10 @@ def sign(v):
     if v > 0:
         return 1
     return 0
+
+
+def interpolate(x, in_min, in_max, out_min, out_max):
+    return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min
 
 
 run_game('test')
