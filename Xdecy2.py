@@ -25,7 +25,6 @@ def get_uid():
 
 
 def terminate():
-    print(pl.rect)
     pygame.quit()
     exit()
 
@@ -233,8 +232,9 @@ class Item:
 
     def draw(self, surface: Surface):
         offset = sin((all_time + self.start_time) / 300) * 10
-        surface.blit(self.image, (self.x * cell_s, self.y * cell_s + offset))
-        surface.blit(get_text(str(self.amount)), (self.x * cell_s, self.y * cell_s + offset))
+        surface.blit(self.image, (self.x * cell_s - self.dx, self.y * cell_s - self.dy + offset))
+        surface.blit(get_text(str(self.amount)),
+                     (self.x * cell_s - self.dx, self.y * cell_s - self.dy + offset))
 
     def __repr__(self):
         return f"{type(self).__name__}({self.x}, {self.y}, '{self.item}', {self.amount})"
@@ -268,8 +268,10 @@ class Effect:
 
 
 class Entity:
+    DROP_CHANCES = {}
+
     def __init__(self, x, y):
-        self.rect = Rect(x, y, 1, 1, enableFloat=True)
+        self.rect = Rect(x, y, 0.5, 0.5, enableFloat=True)
         self.image = None
 
         self.max_health = 0
@@ -299,6 +301,14 @@ class Entity:
                     self.apply_damage(i.damage)
                     if self.health <= 0:
                         projectiles.remove(i)
+
+    def check_death(self):
+        if self.health <= 0:
+            for loot, poss in self.DROP_CHANCES.items():
+                if random.random() < poss:
+                    location.items.append(Item(self.rect.centerx, self.rect.centery, loot,
+                                               random.randrange(*DROP_AMOUNT[loot])))
+            location.enemies.remove(self)
 
     def update(self):
         for i in self.effects:
@@ -360,6 +370,9 @@ class Player(Entity):
 
 
 class Zombie(Entity):
+    DROP_CHANCES = {'item_healing_potion': 0.1, 'item_arrow': 0.2, 'item_gold_heart': 0.1,
+                    'item_heart': 0.3}
+
     def __init__(self, x, y):
         super().__init__(x, y)
         self.image = assets.zombie
@@ -391,6 +404,9 @@ class Zombie(Entity):
 
 
 class Skeleton(Entity):
+    DROP_CHANCES = {'item_healing_potion': 0.1, 'item_arrow': 0.6, 'item_gold_heart': 0.05,
+                    'item_heart': 0.1}
+
     def __init__(self, x, y):
         super().__init__(x, y)
         self.image = assets.skeleton
@@ -435,6 +451,9 @@ class Skeleton(Entity):
 
 
 class Spider(Entity):
+    DROP_CHANCES = {'item_healing_potion': 0.2, 'item_arrow': 0.0, 'item_gold_heart': 0.2,
+                    'item_heart': 0.7}
+
     def __init__(self, x, y):
         super().__init__(x, y)
         self.image = assets.spider
@@ -469,6 +488,9 @@ class Spider(Entity):
 
 
 class Mag(Entity):
+    DROP_CHANCES = {'item_healing_potion': 0.2, 'item_arrow': 0.1, 'item_gold_heart': 0.5,
+                    'item_heart': 0.05}
+
     def __init__(self, x, y):
         super().__init__(x, y)
         self.image = assets.mag
@@ -535,13 +557,10 @@ FPS = 60
 
 NAME_ENEMY = {'zombie': Zombie, 'skeleton': Skeleton, 'spider': Spider, 'mag': Mag}
 
+LOOT_LIST = ['item_healing_potion', 'item_arrow', 'item_gold_heart', 'item_heart']  # unused
 PICK_PRIORITY = ['item_gold_heart', 'item_heart', 'item_healing_potion', 'item_arrow']
-LOOT_LIST = ['item_healing_potion', 'item_arrow', 'item_gold_heart', 'item_heart']
-DROP_AMOUNT = [(1, 4), (2, 6), (10, 20), (15, 30)]
-DROP_CHANCES = {Skeleton: [0.1, 0.6, 0.05, 0.1],
-                Zombie: [0.1, 0.2, 0.1, 0.3],
-                Spider: [0.2, 0.0, 0.2, 0.7],
-                Mag: [0.2, 0.1, 0.5, 0.05]}
+DROP_AMOUNT = {'item_healing_potion': (1, 4), 'item_arrow': (2, 6), 'item_gold_heart': (10, 20),
+               'item_heart': (15, 30)}
 
 difficulty = 1
 
@@ -732,14 +751,7 @@ def run_game(path):
         for i in location.enemies:
             i.update()
             i.check_damage_arrow()
-            if i.health <= 0:
-                loot = DROP_CHANCES[type(i)]
-                for d in enumerate(loot):
-                    if random.random() < d[1]:
-                        location.items.append(
-                            Item(i.rect.x, i.rect.y, LOOT_LIST[d[0]],
-                                 int(random.randrange(10, 30) // difficulty + 1)))
-                location.enemies.remove(i)
+            i.check_death()
 
         # effects
         for i in location.enemies + [pl]:
