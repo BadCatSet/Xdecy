@@ -13,8 +13,10 @@ from pathfinding.finder.a_star import AStarFinder
 # use alternative way to load pathfinding
 # from tpath import AStarFinder, DiagonalMovement, Grid
 import pygame
-from pygame import Surface
-from pygame.transform import scale as pg_scale
+from pygame import Rect as pgRect, Surface, Vector2
+from pygame.transform import rotate as pg_rotate, scale as pg_scale
+from pygame_colliders import create_collider
+import pygame_menu
 import pyrect
 
 
@@ -50,8 +52,10 @@ class Rect(pyrect.Rect):
     w: int
     h: int
 
-    def clipline(self, centerx, centery, centerx1, centery1):
-        return False
+    def clipline(self, point1, point2):
+        (x1, y1), (x2, y2) = point1, point2
+        pg_rect = pgRect(self.x * cell_s, self.y * cell_s, self.w * cell_s, self.h * cell_s)
+        return bool(pg_rect.clipline(x1 * cell_s, y1 * cell_s, x2 * cell_s, y2 * cell_s))
 
 
 class Assets:
@@ -70,6 +74,7 @@ class Assets:
     NAME_MONITOR_S = ['death_screen', 'shlopa_screen']
 
     def __init__(self, path):
+        path = 'resourcepacks/' + path
         self.PATH = path
         for i in self.NAME_BACKGROUND + self.NAME_HARD + self.NAME_SOFT:
             self.load_image(i, cell_ss)
@@ -159,23 +164,22 @@ class Location:
 
 
 class Arrow:
-    def __init__(self, x, y, dx, dy, speed):
+    def __init__(self, coords, dx, dy, tension):
+        self.x, self.y = coords
 
-        self.x = x
-        self.y = y
-        self.d = pygame.Vector2(dx, dy).normalize() * interpolate(speed, -5000, 0, 0.5, 0.1)
+        self.d = Vector2(dx, dy).normalize() * interpolate(tension, 0, 2000, 0.2, 0.5)
         self.angle = self.d.as_polar()[1]
 
         self.image = pygame.transform.rotate(assets.arrow, -self.angle)
         self.image.set_colorkey((255, 255, 255))
 
-        rrr = self.image.get_rect()
-        tv = pygame.Vector2()
+        im_dx, im_dy = self.image.get_rect().center
+        tv = Vector2()
         tv.from_polar((arrow_size[0] // 2, self.angle - 5))
-        self.image_dx = - rrr.centerx - tv.x
-        self.image_dy = - rrr.centery - tv.y
+        self.image_dx = - im_dx - tv.x
+        self.image_dy = - im_dy - tv.y
 
-        self.damage = -count_damage(speed)
+        self.damage = -count_damage(tension)
 
         self.forbidden_damages = []
 
@@ -395,8 +399,8 @@ class Zombie(Entity):
             act = find_path(cells, self.rect.x, self.rect.y, pl.rect.x, pl.rect.y)
             if len(act) > 1:
                 act = act[1]
-                dx = clip_value(act[0] + 0.25 - self.rect.x, self.speed, -self.speed)
-                dy = clip_value(act[1] + 0.25 - self.rect.y, self.speed, -self.speed)
+                dx = trim_value(act[0] + 0.25 - self.rect.x, self.speed, -self.speed)
+                dy = trim_value(act[1] + 0.25 - self.rect.y, self.speed, -self.speed)
                 if can_move(self, dx, 0):
                     self.rect.x += dx
                 if can_move(self, 0, dy):
@@ -413,7 +417,7 @@ class Skeleton(Entity):
         self.max_cooldown = 300
         self.cooldown = random.randrange(0, self.max_cooldown)
         self.speed = 0.6 / FPS
-        self.damage = -70 * difficulty
+        self.tension = 500 * difficulty
         self.max_health = 80 * difficulty
         self.health = self.max_health
 
@@ -422,17 +426,16 @@ class Skeleton(Entity):
         cells = location.cells
         can_see = True
 
-        for x, y in unique_pairs():
-            if cells[x][y].tile not in assets.NAME_BG:
-                if Rect(x, y, 1, 1).clipline(
-                        self.rect.centerx, self.rect.centery, pl.rect.centerx, pl.rect.centery):
+        for x, y in unique_pairs(size, size):
+            if cells[x][y].tile in assets.NAME_HARD:
+                if Rect(x, y, 1, 1).clipline(self.rect.center, pl.rect.center):
                     can_see = False
                     break
         if can_see:
             if self.cooldown < all_time:
-                arrow = Arrow(self.rect.centerx, self.rect.centery,
+                arrow = Arrow(self.rect.center,
                               pl.rect.x - self.rect.x, pl.rect.y - self.rect.y,
-                              -200 * difficulty)
+                              self.tension)
                 for i in locations[(pl.lx, pl.ly)].enemies:
                     arrow.forbidden_damages.append(i.uid)
                 projectiles.append(arrow)
@@ -442,8 +445,8 @@ class Skeleton(Entity):
             act = find_path(cells, self.rect.x, self.rect.y, pl.rect.x, pl.rect.y)
             if len(act):
                 act = act[1]
-                dx = clip_value(act[0] + 0.25 - self.rect.x, self.speed, -self.speed)
-                dy = clip_value(act[1] + 0.25 - self.rect.x, self.speed, -self.speed)
+                dx = trim_value(act[0] + 0.25 - self.rect.x, self.speed, -self.speed)
+                dy = trim_value(act[1] + 0.25 - self.rect.x, self.speed, -self.speed)
                 if can_move(self, dx, 0):
                     self.rect.x += dx
                 if can_move(self, 0, dy):
@@ -473,8 +476,8 @@ class Spider(Entity):
                 pl.apply_damage(self.damage)
                 pl.effects.append(Effect('health', 10000, -0.01 * difficulty, 300))
         if (self.rect.x - pl.rect.x) ** 2 + (self.rect.y - pl.rect.y) ** 2 >= enemy_radius ** 2:
-            dx = clip_value(pl.rect.x - self.rect.x, self.speed, -self.speed)
-            dy = clip_value(pl.rect.y - self.rect.y, self.speed, -self.speed)
+            dx = trim_value(pl.rect.x - self.rect.x, self.speed, -self.speed)
+            dy = trim_value(pl.rect.y - self.rect.y, self.speed, -self.speed)
             if can_move(self, dx, 0, mode='m'):
                 if can_move(self, dx, 0, mode='c'):
                     self.rect.x += dx
@@ -550,6 +553,91 @@ class TempText:
         surface.blit(self.text, (self.x, self.y))
 
 
+class Sword:
+    DEFAULT_COOLDOWN = 500
+    DAMAGE = -50
+    v1 = Vector2(3, -2) / 4
+    v2 = Vector2(8, -1) / 4
+    v3 = Vector2(8, 1) / 4
+    v4 = Vector2(3, 2) / 4
+
+    def __init__(self):
+        self.cooldown = -1000
+        self.area = []
+
+    # noinspection PyUnusedLocal
+    def on_tick(self, is_pressed, mouse_pos, time_d):
+        if not is_pressed:
+            return
+        if self.cooldown > all_time:
+            return
+        self.cooldown = all_time + self.DEFAULT_COOLDOWN
+
+        angle = Vector2(mouse_pos[0] - pl.rect.x * cell_s,
+                        mouse_pos[1] - pl.rect.y * cell_s).as_polar()[1]
+        dxy = pl.rect.center
+        v1 = self.v1.rotate(angle).xy + dxy
+        v2 = self.v2.rotate(angle).xy + dxy
+        v3 = self.v3.rotate(angle).xy + dxy
+        v4 = self.v4.rotate(angle).xy + dxy
+
+        area = (v1, v2, v3, v4)
+        self.set_area(area)
+        # noinspection PyTypeChecker
+        collider = create_collider(area)
+        for i in location.enemies:
+            area2 = (i.rect.topright, i.rect.topleft, i.rect.bottomleft, i.rect.bottomright)
+            # noinspection PyTypeChecker
+            collider2 = create_collider(area2)
+            if collider.collide(collider2):
+                i.apply_damage(self.DAMAGE)
+
+    def set_area(self, area):
+        self.area = [(x * cell_s, y * cell_s) for x, y in area]
+
+    def draw(self, surface):
+        if self.cooldown + 50 < all_time + self.DEFAULT_COOLDOWN:
+            return
+        pygame.draw.polygon(surface, (255, 255, 255), self.area, 0)
+
+
+class Bow:
+    MAX_TENSION = 2000
+
+    def __init__(self):
+        self.tension = 0
+
+    def on_tick(self, is_pressed, mouse_pos, time_d):
+        if pl.arrows <= 0:
+            return
+        if is_pressed:
+            self.tension = trim_value(self.tension + time_d, self.MAX_TENSION, 0)
+        elif self.tension:
+            pl.arrows -= 1
+            arrow = Arrow(pl.rect.center,
+                          mouse_pos[0] - pl.rect.x * cell_s,
+                          mouse_pos[1] - pl.rect.y * cell_s,
+                          self.tension)
+            arrow.forbidden_damages.append(pl.uid)
+            projectiles.append(arrow)
+            self.tension = 0
+
+    def draw(self, surface: Surface):
+        tx = cell_s + half + 10
+        ty = 1
+        th = quarter
+        tw = cell_s + half
+        if self.tension == self.MAX_TENSION:
+            pygame.draw.rect(surface, (255, 0, 0), (tx, ty, tw, th))
+        else:
+            pygame.draw.rect(surface,
+                             mix_color((255, 100, 100), (0, 255, 0),
+                                       self.tension / self.MAX_TENSION),
+                             (tx, ty, tw * self.tension // self.MAX_TENSION, th))
+        if self.tension:
+            surface.blit(get_text(str(count_damage(self.tension))), (tx, ty))
+
+
 pygame.init()
 
 debug = 0  # DEBUG!
@@ -571,17 +659,10 @@ clock = pygame.time.Clock()
 
 PF_FINDER = AStarFinder(diagonal_movement=DiagonalMovement.always)
 
-SPLASH_POTION_AMPLIFIER = 100
-
-SWORD_DAMAGE = -50
-
-ARROW_DEFAULT_COOLDOWN = 500
-ARROW_MAX_COOLDOWN = -5000
-SWORD_DEFAULT_COOLDOWN = 360
-
 TT_COLOR = [(255, 70, 70), (255, 255, 70)]
 
-fire_cooldown = ARROW_MAX_COOLDOWN
+SPLASH_POTION_AMPLIFIER = 100
+
 all_time = 0
 
 size = 0
@@ -609,15 +690,18 @@ locations = dict()
 locations_names = []
 
 set_cell_size(70)
-assets = Assets('assets2/')
+assets = Assets('standard/')
+
 # will be set in run_game()
 pl = Player(0, 0)
+sword = Sword()
+bow = Bow()
 location = Location([], [], [])
 
 
 def load_location(path, coord):
     x, y = coord
-    with open(f'levels2/{path}/{x} {y}.txt') as fil:
+    with open(f'saves/{path}/{x} {y}.txt') as fil:
         fil = fil.read().strip().split()
 
         cells = [[fil[x + y * size] for y in range(size)] for x in range(size)]
@@ -638,7 +722,7 @@ def load_location(path, coord):
 
 def load_level(path):
     global size, locations, locations_names, pl
-    with open(f'levels2/{path}/start.txt') as file:
+    with open(f'saves/{path}/start.txt') as file:
         file = [int(i) for i in file.read().strip().split()]
         size = file[0]
 
@@ -648,7 +732,7 @@ def load_level(path):
 
 
 def run_game(path):
-    global fire_cooldown, all_time, size, locations, location
+    global all_time, size, locations, location
     shlopa_ending = False
     throwing_mode = False
     load_level(path)
@@ -687,10 +771,9 @@ def run_game(path):
                         entity.apply_damage(-SPLASH_POTION_AMPLIFIER)
                     else:
                         entity.apply_damage(SPLASH_POTION_AMPLIFIER)
-                    if type(entity) == Player:
+                    if entity is pl:
                         entity.effects = [i for i in entity.effects if i.amplifier > 0]
 
-        fire_cooldown = max(ARROW_MAX_COOLDOWN, fire_cooldown - time_d)
         all_time += time_d
 
         for event in events:
@@ -701,15 +784,9 @@ def run_game(path):
                     t.pick()
                     location.items.remove(t)
 
-        if mouse[0] and (fire_cooldown < 0) and pl.arrows:
-            pl.arrows -= 1
-            arrow = Arrow(pl.rect.centerx, pl.rect.centery,
-                          mouse_pos[0] - pl.rect.x * cell_s,
-                          mouse_pos[1] - pl.rect.y * cell_s,
-                          fire_cooldown)
-            arrow.forbidden_damages.append(pl.uid)
-            projectiles.append(arrow)
-            fire_cooldown = ARROW_DEFAULT_COOLDOWN
+        bow.on_tick(mouse[0], mouse_pos, time_d)
+
+        sword.on_tick(mouse[2], mouse_pos, time_d)
 
         # player
         pl.update()
@@ -822,24 +899,10 @@ def display_update():
     for i in location.items:
         i.draw(display)
 
+    # weapons
+    sword.draw(display)
+    bow.draw(display)
     # gui
-    tx = cell_s + half + 10
-    ty = 1
-    th = quarter
-    tw = cell_s + half
-
-    if fire_cooldown > 0:
-        pygame.draw.rect(display, (200, 200, 200), (tx, ty, tw, th))
-        pygame.draw.rect(display, (100, 100, 100),
-                         (tx, ty, tw - tw * fire_cooldown // ARROW_DEFAULT_COOLDOWN, quarter))
-    elif fire_cooldown != ARROW_MAX_COOLDOWN:
-        pygame.draw.rect(display, (100, 100, 100), (tx, ty, tw, th))
-        pygame.draw.rect(display, (200, 0, 0),
-                         (tx, ty, tw * fire_cooldown // ARROW_MAX_COOLDOWN, th))
-    else:
-        pygame.draw.rect(display, (255, 0, 0), (tx, ty, tw, th))
-    if fire_cooldown <= 0:
-        display.blit(get_text(str(count_damage(fire_cooldown))), (tx, ty))
 
     for n, i in enumerate(pl.effects):
         i.draw(display, n)
@@ -858,13 +921,92 @@ def display_update():
                          (monitor_size[0] - 1, monitor_size[1] - cell_s), width=3)
 
 
+def run_menu():
+    level_names = []
+    for i in os.listdir('./saves'):
+        if os.path.isdir('./saves/' + i):
+            level_names.append(i)
+    length = len(max(level_names, key=lambda x: len(x)))
+    for i in range(len(level_names)):
+        level_names[i] = level_names[i].ljust(length, ' ')
+    current_level = level_names[0]
+
+    assets_names = []
+    for i in os.listdir('./resourcepacks'):
+        if os.path.isdir('./resourcepacks/' + i):
+            assets_names.append(i)
+    length = len(max(assets_names, key=lambda x: len(x)))
+    for i in range(len(assets_names)):
+        assets_names[i] = assets_names[i].ljust(length, ' ')
+
+    def change_assets(_, name, *__, **___):
+        global assets
+        assets = Assets(name.strip() + '/')
+
+    def change_level(_, name, *__, **___):
+        nonlocal current_level
+        current_level = name
+
+    def start_game():
+        run_game(current_level.strip())
+
+    theme = pygame_menu.themes.THEME_BLUE.copy()
+    theme.title_background_color = 50, 50, 50
+    theme.title_font_color = 255, 20, 19
+    theme.title_font_shadow = False
+    theme.title_font = pygame_menu.font.FONT_OPEN_SANS_BOLD
+
+    theme.widget_font_size = 40
+    theme.background_color = 33, 33, 33
+    theme.widget_font_color = 20, 255, 236
+    theme.selection_color = 255, 236, 20
+    theme.widget_selection_effect = pygame_menu.widgets.selection.LeftArrowSelection()
+    theme.widget_font = pygame_menu.font.FONT_OPEN_SANS_BOLD
+
+    menu = pygame_menu.Menu(title='Xdecy2',
+                            width=monitor_size[0], height=monitor_size[1],
+                            theme=theme)
+    menu.add.button('START GAME', start_game)
+    # noinspection PyTypeChecker
+    menu.add.selector(title='RESOURCEPACK: ',
+                      items=list(zip(assets_names, assets_names)),
+                      onchange=change_assets)
+    # noinspection PyTypeChecker
+    menu.add.selector(title='LEVEL: ',
+                      items=list(zip(level_names, level_names)),
+                      onchange=change_level)
+    menu.add.button('QUIT', pygame_menu.events.EXIT)
+    while True:
+        clock.tick(FPS)
+        events = pygame.event.get()
+
+        for event in events:
+            if event.type == pygame.QUIT:
+                terminate()
+            if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                terminate()
+        menu.draw(display)
+        menu.update(events)
+        # noinspection PyUnboundLocalVariable
+        ba = pg_rotate(pg_scale(assets.b3.convert_alpha(), (150, 150)), 45)
+        bb = pg_rotate(pg_scale(assets.b4.convert_alpha(), (130, 130)), -45)
+        bc = pg_rotate(pg_scale(assets.b7.convert_alpha(), (130, 130)), 45)
+        bd = pg_rotate(pg_scale(assets.b8.convert_alpha(), (150, 150)), -45)
+
+        display.blit(ba, (210, 210))
+        display.blit(bb, (monitor_size[0] - 300, 130))
+        display.blit(bc, (100, monitor_size[1] - 300))
+        display.blit(bd, (monitor_size[0] - 400, monitor_size[1] - 370))
+
+        pygame.display.flip()
+
+
 def get_text(mess, font_color=(0, 0, 0), font_type=assets.PATH + 'font.ttf', font_size=15):
     return pygame.font.Font(font_type, font_size).render(mess, True, font_color)
 
 
 def find_path(mat, x1, y1, x2, y2):
-    print(x1, y1, x2, y2)
-    mat = [[(1 if mat[i][j] in assets.NAME_BACKGROUND else 0)
+    mat = [[(1 if mat[i][j].tile in assets.NAME_BACKGROUND else 0)
             for i in range(size)] for j in range(size)]
     grid = Grid(matrix=mat)
     start = grid.node(int(x1), int(y1))
@@ -874,9 +1016,9 @@ def find_path(mat, x1, y1, x2, y2):
     return path
 
 
-def unique_pairs(r_x=(0, size), r_y=(0, size)):
-    for x in range(*r_x):
-        for y in range(*r_y):
+def unique_pairs(r_x, r_y):
+    for x in range(r_x):
+        for y in range(r_y):
             yield x, y
 
 
@@ -885,7 +1027,8 @@ def can_move(self, dx, dy, mode='cm'):
 
     if 'c' in mode:
         mx, my = int(rect.x), int(rect.y)
-        for x, y in unique_pairs((mx, mx + 2), (my, my + 2)):
+        for dx, dy in unique_pairs(2, 2):
+            x, y = mx + dx, my + dy
             if x < 0 or x > size - 1 or y < 0 or y > size - 1:
                 continue
             if location[x, y].tile not in assets.NAME_BACKGROUND:
@@ -904,12 +1047,28 @@ def collision_with_circle(i: Entity, x, y, r):
     return (i.rect.centerx - x) ** 2 + (i.rect.centery - y) ** 2 < (r + 0.25) ** 2
 
 
-def count_damage(c):
-    return int((c // -100) ** 1.5) + (20 if c == ARROW_MAX_COOLDOWN else 0)
+def trim_value(v, ma, mi):
+    if v < mi:
+        return mi
+    if v > ma:
+        return ma
+    return v
 
 
-def clip_value(v, ma, mi):
-    return max(min(v, ma), mi)
+def mix_color(c1, c2, a):
+    b = 1 - a
+    return c1[0] * a + c2[0] * b, c1[1] * a + c2[1] * b, c1[2] * a + c2[2] * b
+
+
+'''
+def intersect_ranges(*ranges):
+    res = ranges[0]
+    for i in ranges[1:]:
+        res = (max(res[0], i[0]), min(res[1], i[1]))
+        if res[0] > res[1]:
+            return False
+    return True
+'''
 
 
 def sign(v):
@@ -920,8 +1079,14 @@ def sign(v):
     return 0
 
 
+def count_damage(tension):
+    a = int(tension ** 1.5) // 223 - (0 if tension == bow.MAX_TENSION else 20)
+    return trim_value(a, 399, 10)
+
+
 def interpolate(x, in_min, in_max, out_min, out_max):
     return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min
 
 
-run_game('test')
+run_menu()
+# run_game('test')
