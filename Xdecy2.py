@@ -31,19 +31,8 @@ def terminate():
     exit()
 
 
-def set_cell_size(new_cell_size):
-    global cell_s, half, quarter, cell_ss, half_d, quarter_d, player_radius, splash_potion_radius, \
-        enemy_radius, arrow_size
-    cell_s = new_cell_size
-    half = cell_s / 2
-    quarter = cell_s / 4
-    half_d = (half, half)  # half doubled
-    cell_ss = (cell_s, cell_s)
-    quarter_d = (quarter, quarter)  # quarter doubled
-    player_radius = 1.25
-    splash_potion_radius = 1.2
-    enemy_radius = 1
-    arrow_size = (cell_s, cell_s * 3 // 8)
+class GameOverSignal(Exception):
+    pass
 
 
 class Rect(pyrect.Rect):
@@ -139,7 +128,7 @@ class Cell(MySprite):
         self.image = eval(f'assets.{tile}')
 
     def draw(self, surface: Surface):
-        coord = (self.rect.x * cell_s, self.rect.y * cell_s)
+        coord = self.rect.x * cell_s + cam_dx, self.rect.y * cell_s + cam_dy
         surface.blit(self.image, coord)
 
 
@@ -203,7 +192,8 @@ class Arrow:
 
     def draw(self, surface: Surface):
         # pygame.draw.circle(surface, (255, 0, 0), (self.x * cell_s, self.y * cell_s), 10)
-        surface.blit(self.image, (self.x * cell_s + self.image_dx, self.y * cell_s + self.image_dy))
+        coord = self.x * cell_s + self.image_dx + cam_dx, self.y * cell_s + self.image_dy + cam_dy
+        surface.blit(self.image, coord)
 
 
 class Item:
@@ -236,9 +226,9 @@ class Item:
 
     def draw(self, surface: Surface):
         offset = sin((all_time + self.start_time) / 300) * 10
-        surface.blit(self.image, (self.x * cell_s - self.dx, self.y * cell_s - self.dy + offset))
-        surface.blit(get_text(str(self.amount)),
-                     (self.x * cell_s - self.dx, self.y * cell_s - self.dy + offset))
+        coord = self.x * cell_s - self.dx + cam_dx, self.y * cell_s - self.dy + offset + cam_dy
+        surface.blit(self.image, coord)
+        surface.blit(get_text(str(self.amount)), coord)
 
     def __repr__(self):
         return f"{type(self).__name__}({self.x}, {self.y}, '{self.item}', {self.amount})"
@@ -268,7 +258,7 @@ class Effect:
         return self.time_to_del < all_time
 
     def draw(self, surface: Surface, n):
-        surface.blit(self.image, (monitor_size[0] - half * n, 0))
+        surface.blit(self.image, (monitor_size[0] - half * n + cam_dx, cam_dy))
 
 
 class Entity:
@@ -321,15 +311,16 @@ class Entity:
                 self.apply_damage(t[1])
 
     def draw(self, surface: Surface):
-        surface.blit(self.image, (self.rect.x * cell_s, self.rect.y * cell_s))
+        surface.blit(self.image, (self.rect.x * cell_s + cam_dx, self.rect.y * cell_s + cam_dy))
 
     def draw_health(self, surface: Surface):
-        pygame.draw.rect(surface, (100, 100, 100), (self.rect.x * cell_s,
-                                                    self.rect.y * cell_s - 10, half, 5))
-        pygame.draw.rect(surface, (255, 0, 0), (self.rect.x * cell_s, self.rect.y * cell_s - 10,
+        pygame.draw.rect(surface, (100, 100, 100), (self.rect.x * cell_s + cam_dx,
+                                                    self.rect.y * cell_s - 10 + cam_dy, half, 5))
+        pygame.draw.rect(surface, (255, 0, 0), (self.rect.x * cell_s + cam_dx,
+                                                self.rect.y * cell_s - 10 + cam_dy,
                                                 half * self.health // self.max_health, 5))
         surface.blit(get_text(str(int(self.health))),
-                     (self.rect.x * cell_s, self.rect.y * cell_s - 15))
+                     (self.rect.x * cell_s + cam_dx, self.rect.y * cell_s - 15 + cam_dy))
 
     def __repr__(self):
         return self.__dict__
@@ -528,7 +519,8 @@ class MagCircle:
             mag_circles.remove(self)
 
     def draw(self, surface: Surface):
-        pygame.draw.circle(surface, (200, 30, 0), (self.x * cell_s, self.y * cell_s),
+        pygame.draw.circle(surface, (200, 30, 0),
+                           (self.x * cell_s + cam_dx, self.y * cell_s + cam_dy),
                            self.s * cell_s)
 
 
@@ -550,55 +542,61 @@ class TempText:
             temp_text.remove(self)
 
     def draw(self, surface: Surface):
-        surface.blit(self.text, (self.x, self.y))
+        surface.blit(self.text, (self.x + cam_dx, self.y + cam_dy))
 
 
 class Sword:
     DEFAULT_COOLDOWN = 500
+    ATTACK_TIME = 150
     DAMAGE = -50
-    v1 = Vector2(3, -2) / 4
-    v2 = Vector2(8, -1) / 4
-    v3 = Vector2(8, 1) / 4
-    v4 = Vector2(3, 2) / 4
+    v1 = Vector2(2, -0.25) / 4
+    v2 = Vector2(6, -0.5) / 4
+    v3 = Vector2(6, 0.5) / 4
+    v4 = Vector2(2, 0.25) / 4
 
     def __init__(self):
-        self.cooldown = -1000
+        self.last_use = -10000
         self.area = []
+        self.base_angle = 0
+        self.forbidden_damages = []
 
     # noinspection PyUnusedLocal
     def on_tick(self, is_pressed, mouse_pos, time_d):
-        if not is_pressed:
-            return
-        if self.cooldown > all_time:
-            return
-        self.cooldown = all_time + self.DEFAULT_COOLDOWN
+        if all_time - self.last_use > self.DEFAULT_COOLDOWN and is_pressed:
+            self.forbidden_damages = []
+            self.last_use = all_time
+            self.base_angle = Vector2(mouse_pos[0] - monitor_size[0] // 2,
+                                      mouse_pos[1] - monitor_size[1] // 2).as_polar()[1]
+        if all_time - self.last_use < self.ATTACK_TIME:
+            angle = self.base_angle + interpolate(all_time - self.last_use,
+                                                  0, self.ATTACK_TIME, -23, 23)
+            dxy = pl.rect.center
+            v1 = self.v1.rotate(angle).xy + dxy
+            v2 = self.v2.rotate(angle).xy + dxy
+            v3 = self.v3.rotate(angle).xy + dxy
+            v4 = self.v4.rotate(angle).xy + dxy
 
-        angle = Vector2(mouse_pos[0] - pl.rect.x * cell_s,
-                        mouse_pos[1] - pl.rect.y * cell_s).as_polar()[1]
-        dxy = pl.rect.center
-        v1 = self.v1.rotate(angle).xy + dxy
-        v2 = self.v2.rotate(angle).xy + dxy
-        v3 = self.v3.rotate(angle).xy + dxy
-        v4 = self.v4.rotate(angle).xy + dxy
-
-        area = (v1, v2, v3, v4)
-        self.set_area(area)
-        # noinspection PyTypeChecker
-        collider = create_collider(area)
-        for i in location.enemies:
-            area2 = (i.rect.topright, i.rect.topleft, i.rect.bottomleft, i.rect.bottomright)
+            area = (v1, v2, v3, v4)
+            self.area = area
             # noinspection PyTypeChecker
-            collider2 = create_collider(area2)
-            if collider.collide(collider2):
-                i.apply_damage(self.DAMAGE)
-
-    def set_area(self, area):
-        self.area = [(x * cell_s, y * cell_s) for x, y in area]
+            collider = create_collider(area)
+            for i in location.enemies:
+                if i in self.forbidden_damages:
+                    continue
+                area2 = (i.rect.topright, i.rect.topleft, i.rect.bottomleft, i.rect.bottomright)
+                # noinspection PyTypeChecker
+                collider2 = create_collider(area2)
+                if collider.collide(collider2):
+                    self.forbidden_damages.append(i)
+                    i.apply_damage(self.DAMAGE)
 
     def draw(self, surface):
-        if self.cooldown + 50 < all_time + self.DEFAULT_COOLDOWN:
+        if all_time - self.last_use > self.ATTACK_TIME:
             return
-        pygame.draw.polygon(surface, (255, 255, 255), self.area, 0)
+
+        area = [(x * cell_s + cam_dx, y * cell_s + cam_dy) for x, y in self.area]
+        print(area)
+        pygame.draw.polygon(surface, (255, 255, 255), area, 0)
 
 
 class Bow:
@@ -615,8 +613,8 @@ class Bow:
         elif self.tension:
             pl.arrows -= 1
             arrow = Arrow(pl.rect.center,
-                          mouse_pos[0] - pl.rect.x * cell_s,
-                          mouse_pos[1] - pl.rect.y * cell_s,
+                          mouse_pos[0] - monitor_size[0] // 2,
+                          mouse_pos[1] - monitor_size[1] // 2,
                           self.tension)
             arrow.forbidden_damages.append(pl.uid)
             projectiles.append(arrow)
@@ -630,9 +628,8 @@ class Bow:
         if self.tension == self.MAX_TENSION:
             pygame.draw.rect(surface, (255, 0, 0), (tx, ty, tw, th))
         else:
-            pygame.draw.rect(surface,
-                             mix_color((255, 100, 100), (0, 255, 0),
-                                       self.tension / self.MAX_TENSION),
+            pygame.draw.rect(surface, mix_color((255, 100, 100), (0, 255, 0),
+                                                self.tension / self.MAX_TENSION),
                              (tx, ty, tw * self.tension // self.MAX_TENSION, th))
         if self.tension:
             surface.blit(get_text(str(count_damage(self.tension))), (tx, ty))
@@ -666,17 +663,17 @@ SPLASH_POTION_AMPLIFIER = 100
 all_time = 0
 
 size = 0
-# будет определено в функции set_cell_size()
-cell_s = 0
-half = 0
-quarter = 0
-cell_ss = (0, 0)
-half_d = (0, 0)
-quarter_d = (0, 0)
-arrow_size = (0, 0)
-splash_potion_radius = 0
-player_radius = 0
-enemy_radius = 0
+
+cell_s = 100
+half = cell_s / 2
+quarter = cell_s / 4
+half_d = (half, half)  # half doubled
+cell_ss = (cell_s, cell_s)
+quarter_d = (quarter, quarter)  # quarter doubled
+player_radius = 1.25
+splash_potion_radius = 1.2
+enemy_radius = 1
+arrow_size = (cell_s, cell_s * 3 // 8)
 cam_dx = 0
 cam_dy = 0
 
@@ -689,7 +686,6 @@ mag_circles = []
 locations = dict()
 locations_names = []
 
-set_cell_size(70)
 assets = Assets('standard/')
 
 # will be set in run_game()
@@ -748,9 +744,9 @@ def run_game(path):
 
         for event in events:
             if event.type == pygame.QUIT:
-                terminate()
+                raise GameOverSignal
             if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
-                terminate()
+                raise GameOverSignal
 
         if keys[pygame.K_f] and pl.potions:
             throwing_mode = True
@@ -765,7 +761,8 @@ def run_game(path):
             pl.potions -= 1
 
             for entity in location.enemies + [pl]:
-                if collision_with_circle(entity, mouse_pos[0] // cell_s, mouse_pos[1] // cell_s,
+                if collision_with_circle(entity, (mouse_pos[0] - cam_dx) // cell_s,
+                                         (mouse_pos[1] - cam_dy) // cell_s,
                                          splash_potion_radius):
                     if type(entity) in {Skeleton, Zombie, Mag}:
                         entity.apply_damage(-SPLASH_POTION_AMPLIFIER)
@@ -845,9 +842,9 @@ def run_game(path):
         timer += clock.tick(60)
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
-                terminate()
+                raise GameOverSignal
             if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
-                terminate()
+                raise GameOverSignal
         display.blit(assets.death_screen, (0, 0))
         pygame.display.flip()
     if not pl.lx and not pl.ly and pl.rect.x == pl.rect.y == cell_s and shlopa_ending:
@@ -857,14 +854,30 @@ def run_game(path):
             timer += clock.tick(60)
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
-                    terminate()
+                    raise GameOverSignal
                 if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
-                    terminate()
+                    raise GameOverSignal
             display.blit(assets.shlopa_screen, (0, 0))
             pygame.display.flip()
 
 
 def display_update():
+    global cam_dx, cam_dy
+    plx, ply = pl.rect.centerx * cell_s, pl.rect.centery * cell_s
+    if size * cell_s < monitor_size[0]:
+        cam_dx = monitor_size[0] // 2 - size * cell_s // 2
+    else:
+        cam_dx = trim_value(monitor_size[0] // 2 - plx,
+                            0,
+                            monitor_size[0] - size * cell_s)
+
+    if size * cell_s < monitor_size[1]:
+        cam_dy = monitor_size[1] // 2 - size * cell_s // 2
+    else:
+        cam_dy = trim_value(monitor_size[1] // 2 - ply,
+                            0,
+                            monitor_size[1] - size * cell_s)
+
     display.fill((0, 0, 0))
     # bg
     location.bg_group.draw(display)
@@ -872,11 +885,6 @@ def display_update():
     # mag circles
     for i in mag_circles:
         i.draw(display)
-
-    # sword circle
-    pygame.draw.circle(display, (100, 100, 100),
-                       (pl.rect.x * cell_s + quarter, pl.rect.y * cell_s + quarter),
-                       player_radius * cell_s, 2)
 
     # cells
     location.block_group.draw(display)
@@ -948,7 +956,10 @@ def run_menu():
         current_level = name
 
     def start_game():
-        run_game(current_level.strip())
+        try:
+            run_game(current_level.strip())
+        except GameOverSignal:
+            pass
 
     theme = pygame_menu.themes.THEME_BLUE.copy()
     theme.title_background_color = 50, 50, 50
@@ -1008,7 +1019,7 @@ def get_text(mess, font_color=(0, 0, 0), font_type=assets.PATH + 'font.ttf', fon
 def find_path(mat, x1, y1, x2, y2):
     mat = [[(1 if mat[i][j].tile in assets.NAME_BACKGROUND else 0)
             for i in range(size)] for j in range(size)]
-    grid = Grid(matrix=mat)
+    grid = Grid(size, size, mat)
     start = grid.node(int(x1), int(y1))
     end = grid.node(int(x2), int(y2))
 
@@ -1089,4 +1100,3 @@ def interpolate(x, in_min, in_max, out_min, out_max):
 
 
 run_menu()
-# run_game('test')
