@@ -3,8 +3,8 @@ v1.1
 """
 tpath_load = False  # use alternative algorithm of pathfinding loader
 
-from math import sin
 import random
+from math import sin
 
 import pygame
 
