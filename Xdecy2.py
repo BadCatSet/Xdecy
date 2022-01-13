@@ -35,6 +35,18 @@ class GameOverSignal(Exception):
     pass
 
 
+class ExitGameSignal(Exception):
+    pass
+
+
+class RetrySignal(Exception):
+    pass
+
+
+class ReturnToMenuSignal(Exception):
+    pass
+
+
 class Rect(pyrect.Rect):
     x: int
     y: int
@@ -80,6 +92,7 @@ class Assets:
         self.item_arrow.set_colorkey((255, 255, 255))
         self.item_gold_heart.set_colorkey((255, 255, 255))
         self.item_heart.set_colorkey((255, 255, 255))
+        self.item_healing_potion.set_colorkey((255, 255, 255))
 
         for i in self.NAME_SOUNDS:
             sound = pygame.mixer.Sound(path + i + '.wav')
@@ -98,7 +111,7 @@ class Assets:
             if colorkey == -1:
                 colorkey = image.get_at((1, 1))
             image.set_colorkey(colorkey)
-        self.__setattr__(name, image)
+        self.__setattr__(name, image.convert_alpha())
 
     def get_bg(self):
         return random.choices(self.NAME_BACKGROUND, weights=self.FREQUENCY_BG, k=1)[0]
@@ -297,11 +310,13 @@ class Entity:
                         projectiles.remove(i)
 
     def check_death(self):
+        global score
         if self.health <= 0:
             for loot, poss in self.DROP_CHANCES.items():
                 if random.random() < poss:
                     location.items.append(Item(self.rect.centerx, self.rect.centery, loot,
                                                random.randrange(*DROP_AMOUNT[loot])))
+            score += 1
             location.enemies.remove(self)
 
     def update(self):
@@ -488,7 +503,6 @@ class Mag(Entity):
     def __init__(self, x, y):
         super().__init__(x, y)
         self.image = assets.mag
-        self.max_cooldown = lambda: random.randrange(1000, 3500)
         self.cooldown = 1000 + all_time
         self.speed = 1.1 / FPS
         self.damage = -100 * difficulty
@@ -500,8 +514,16 @@ class Mag(Entity):
         if self.cooldown < all_time:
             self.cooldown = all_time + self.max_cooldown()
             multiplier = random.randrange(9, 12) / 10
-            mag_circles.append(MagCircle(pl.rect.centerx, pl.rect.centery, self.damage * multiplier,
-                                         0.5 * multiplier, 3000))
+            mag_circles.append(MagCircle(*pl.rect.center, self.damage * multiplier,
+                                         0.5 * multiplier, self.get_detonation_time()))
+
+    @staticmethod
+    def max_cooldown():
+        return random.randrange(2000, 3000)
+
+    @staticmethod
+    def get_detonation_time():
+        return random.randrange(700, 1000)
 
 
 class MagCircle:
@@ -510,10 +532,11 @@ class MagCircle:
         self.y = y
         self.s = s
         self.d = d
-        self.detonation_time = time_delta + all_time
+        self.end_time = all_time + time_delta
+        self.start_time = all_time
 
     def update(self):
-        if self.detonation_time < all_time:
+        if self.end_time < all_time:
             if collision_with_circle(pl, self.x + 0.25, self.y + 0.25, self.s):
                 pl.apply_damage(self.d)
             mag_circles.remove(self)
@@ -522,6 +545,12 @@ class MagCircle:
         pygame.draw.circle(surface, (200, 30, 0),
                            (self.x * cell_s + cam_dx, self.y * cell_s + cam_dy),
                            self.s * cell_s)
+        pygame.draw.circle(surface, (255, 100, 0),
+                           (self.x * cell_s + cam_dx, self.y * cell_s + cam_dy),
+                           self.s * cell_s * interpolate(all_time,
+                                                         self.start_time,
+                                                         self.end_time,
+                                                         0, 1))
 
 
 class TempText:
@@ -565,8 +594,9 @@ class Sword:
         if all_time - self.last_use > self.DEFAULT_COOLDOWN and is_pressed:
             self.forbidden_damages = []
             self.last_use = all_time
-            self.base_angle = Vector2(mouse_pos[0] - monitor_size[0] // 2,
-                                      mouse_pos[1] - monitor_size[1] // 2).as_polar()[1]
+            self.base_angle = Vector2(
+                mouse_pos[0] - pl.rect.centerx * cell_s - cam_dx,
+                mouse_pos[1] - pl.rect.centery * cell_s - cam_dy).as_polar()[1]
         if all_time - self.last_use < self.ATTACK_TIME:
             angle = self.base_angle + interpolate(all_time - self.last_use,
                                                   0, self.ATTACK_TIME, -23, 23)
@@ -613,8 +643,8 @@ class Bow:
         elif self.tension:
             pl.arrows -= 1
             arrow = Arrow(pl.rect.center,
-                          mouse_pos[0] - monitor_size[0] // 2,
-                          mouse_pos[1] - monitor_size[1] // 2,
+                          mouse_pos[0] - pl.rect.centerx * cell_s - cam_dx,
+                          mouse_pos[1] - pl.rect.centery * cell_s - cam_dy,
                           self.tension)
             arrow.forbidden_damages.append(pl.uid)
             projectiles.append(arrow)
@@ -651,7 +681,8 @@ difficulty = 1
 
 monitor_size = [pygame.display.Info().current_w, pygame.display.Info().current_h]
 DISPLAY_S = min(monitor_size)
-display = pygame.display.set_mode(monitor_size)  # , pygame.FULLSCREEN)
+display = pygame.display.set_mode(monitor_size)
+
 clock = pygame.time.Clock()
 
 PF_FINDER = AStarFinder(diagonal_movement=DiagonalMovement.always)
@@ -661,6 +692,7 @@ TT_COLOR = [(255, 70, 70), (255, 255, 70)]
 SPLASH_POTION_AMPLIFIER = 100
 
 all_time = 0
+score = 0
 
 size = 0
 
@@ -694,24 +726,40 @@ sword = Sword()
 bow = Bow()
 location = Location([], [], [])
 
+theme = pygame_menu.themes.THEME_BLUE.copy()
+theme.title_background_color = 50, 50, 50
+theme.title_font_color = 255, 20, 19
+theme.title_font_shadow = False
+theme.title_font = pygame_menu.font.FONT_OPEN_SANS_BOLD
+
+theme.widget_font_size = 40
+theme.background_color = 33, 33, 33
+theme.widget_font_color = 20, 255, 236
+theme.selection_color = 255, 236, 20
+theme.widget_selection_effect = pygame_menu.widgets.selection.LeftArrowSelection()
+theme.widget_font = pygame_menu.font.FONT_OPEN_SANS_BOLD
+
+game_over_theme = theme.copy()
+game_over_theme.title_bar_style = pygame_menu.themes.MENUBAR_STYLE_SIMPLE
+
 
 def load_location(path, coord):
     x, y = coord
-    with open(f'saves/{path}/{x} {y}.txt') as fil:
-        fil = fil.read().strip().split()
+    with open(f'saves/{path}/{x} {y}.txt') as file:
+        file = file.read().strip().split()
 
-        cells = [[fil[x + y * size] for y in range(size)] for x in range(size)]
+        cells = [[file[x + y * size] for y in range(size)] for x in range(size)]
         enemies = []
         items = []
 
-        fil = fil[size ** 2:]
-        for i in range(int(fil[0])):
-            tx, ty, n = fil[i + 1].split('-')
+        file = file[size ** 2:]
+        for i in range(int(file[0])):
+            tx, ty, n = file[i + 1].split('-')
             enemies.append(NAME_ENEMY[n](float(tx), float(ty)))
 
-        fil = fil[int(fil[0]) + 1:]
-        for i in range(int(fil[0])):
-            t = fil[i + 1].split('-')
+        file = file[int(file[0]) + 1:]
+        for i in range(int(file[0])):
+            t = file[i + 1].split('-')
             items.append(Item(float(t[0]), float(t[1]), t[2], int(t[3])))
     return Location(cells, enemies, items)
 
@@ -728,7 +776,8 @@ def load_level(path):
 
 
 def run_game(path):
-    global all_time, size, locations, location
+    global all_time, size, locations, location, score
+    score = 0
     shlopa_ending = False
     throwing_mode = False
     load_level(path)
@@ -744,9 +793,9 @@ def run_game(path):
 
         for event in events:
             if event.type == pygame.QUIT:
-                raise GameOverSignal
+                terminate()
             if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
-                raise GameOverSignal
+                raise ExitGameSignal
 
         if keys[pygame.K_f] and pl.potions:
             throwing_mode = True
@@ -794,12 +843,12 @@ def run_game(path):
         if dlx and not location.enemies:
             if (pl.lx + dlx, pl.ly) in locations_names:
                 pl.lx += dlx
-                pl.rect.x = size - 0.5 - pl.rect.x
+                pl.rect.x = size - pl.rect.right
                 change = True
         if dly and not location.enemies:
             if (pl.lx, pl.ly + dly) in locations_names:
                 pl.ly += dly
-                pl.rect.y = size - 0.5 - pl.rect.y
+                pl.rect.y = size - pl.rect.bottom
                 change = True
         if change:
             location = locations[(pl.lx, pl.ly)]
@@ -821,13 +870,12 @@ def run_game(path):
             i.update()
 
         # enemies
-
         for i in location.enemies:
             i.update()
             i.check_damage_arrow()
             i.check_death()
 
-        # effects
+        # delete effects
         for i in location.enemies + [pl]:
             for j in i.effects:
                 if j.check():
@@ -839,26 +887,27 @@ def run_game(path):
     pygame.mixer.Sound.play(assets.death_sound)
     timer = 0
     while timer < 8000:
-        timer += clock.tick(60)
+        timer += clock.tick(FPS)
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
-                raise GameOverSignal
+                terminate()
             if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
                 raise GameOverSignal
         display.blit(assets.death_screen, (0, 0))
         pygame.display.flip()
-    if not pl.lx and not pl.ly and pl.rect.x == pl.rect.y == cell_s and shlopa_ending:
+    if pl.lx == pl.ly == 0 and pl.rect.x == pl.rect.y == 1 and shlopa_ending:
         pygame.mixer.Sound.play(assets.shlopa_sound)
         timer = 0
         while timer < 20000:
-            timer += clock.tick(60)
+            timer += clock.tick(FPS)
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
-                    raise GameOverSignal
+                    terminate()
                 if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
                     raise GameOverSignal
             display.blit(assets.shlopa_screen, (0, 0))
             pygame.display.flip()
+    raise GameOverSignal
 
 
 def display_update():
@@ -923,10 +972,10 @@ def display_update():
 
     # can move
     if location.enemies:
-        pygame.draw.line(display, (255, 10, 10), (0, cell_s),
-                         (0, monitor_size[1] - cell_s), width=3)
-        pygame.draw.line(display, (255, 10, 10), (monitor_size[0] - 1, cell_s),
-                         (monitor_size[0] - 1, monitor_size[1] - cell_s), width=3)
+        pygame.draw.line(display, (255, 10, 10), (0, 100),
+                         (0, monitor_size[1] - 100), width=3)
+        pygame.draw.line(display, (255, 10, 10), (monitor_size[0] - 1, 100),
+                         (monitor_size[0] - 1, monitor_size[1] - 100), width=3)
 
 
 def run_menu():
@@ -934,59 +983,54 @@ def run_menu():
     for i in os.listdir('./saves'):
         if os.path.isdir('./saves/' + i):
             level_names.append(i)
-    length = len(max(level_names, key=lambda x: len(x)))
-    for i in range(len(level_names)):
-        level_names[i] = level_names[i].ljust(length, ' ')
-    current_level = level_names[0]
-
     assets_names = []
     for i in os.listdir('./resourcepacks'):
         if os.path.isdir('./resourcepacks/' + i):
             assets_names.append(i)
-    length = len(max(assets_names, key=lambda x: len(x)))
+
+    l_length = max(map(lambda x: len(x), level_names))
+    for i in range(len(level_names)):
+        level_names[i] = (level_names[i].ljust(l_length, ' '), level_names[1])
+
+    t_length = max(map(lambda x: len(x), assets_names))
     for i in range(len(assets_names)):
-        assets_names[i] = assets_names[i].ljust(length, ' ')
+        assets_names[i] = (assets_names[i].ljust(t_length, ' '), assets_names[i])
 
-    def change_assets(_, name, *__, **___):
+    def change_assets(*_, **__):
         global assets
-        assets = Assets(name.strip() + '/')
-
-    def change_level(_, name, *__, **___):
-        nonlocal current_level
-        current_level = name
+        assets = Assets(sr.get_value()[0][1] + '/')
 
     def start_game():
         try:
-            run_game(current_level.strip())
+            run_game(sl.get_value()[0][1])
+        except ExitGameSignal:
+            return False
         except GameOverSignal:
+            try:
+                run_menu_game_over()
+            except ReturnToMenuSignal:
+                return False
+            except RetrySignal:
+                return True
+
+    def start_game_core():
+        while start_game():
             pass
-
-    theme = pygame_menu.themes.THEME_BLUE.copy()
-    theme.title_background_color = 50, 50, 50
-    theme.title_font_color = 255, 20, 19
-    theme.title_font_shadow = False
-    theme.title_font = pygame_menu.font.FONT_OPEN_SANS_BOLD
-
-    theme.widget_font_size = 40
-    theme.background_color = 33, 33, 33
-    theme.widget_font_color = 20, 255, 236
-    theme.selection_color = 255, 236, 20
-    theme.widget_selection_effect = pygame_menu.widgets.selection.LeftArrowSelection()
-    theme.widget_font = pygame_menu.font.FONT_OPEN_SANS_BOLD
 
     menu = pygame_menu.Menu(title='Xdecy2',
                             width=monitor_size[0], height=monitor_size[1],
                             theme=theme)
-    menu.add.button('START GAME', start_game)
+    menu.add.button('START GAME', start_game_core)
     # noinspection PyTypeChecker
-    menu.add.selector(title='RESOURCEPACK: ',
-                      items=list(zip(assets_names, assets_names)),
-                      onchange=change_assets)
+    sr = menu.add.selector(title='RESOURCEPACK: ',
+                           items=assets_names,
+                           onchange=change_assets)
     # noinspection PyTypeChecker
-    menu.add.selector(title='LEVEL: ',
-                      items=list(zip(level_names, level_names)),
-                      onchange=change_level)
+    sl = menu.add.selector(title='LEVEL: ',
+                           items=level_names)
     menu.add.button('QUIT', pygame_menu.events.EXIT)
+    sr.set_value('standard'.ljust(t_length, ' '))
+    sl.set_value('test'.ljust(l_length, ' '))
     while True:
         clock.tick(FPS)
         events = pygame.event.get()
@@ -1009,6 +1053,33 @@ def run_menu():
         display.blit(bc, (100, monitor_size[1] - 300))
         display.blit(bd, (monitor_size[0] - 400, monitor_size[1] - 370))
 
+        pygame.display.flip()
+
+
+def run_menu_game_over():
+    def retry():
+        raise RetrySignal
+
+    def return_to_menu():
+        raise ReturnToMenuSignal
+
+    menu = pygame_menu.Menu(title='..GAME OVER..',
+                            width=monitor_size[0], height=monitor_size[1],
+                            theme=game_over_theme)
+    menu.add.label(title=f'SCORE: {score}')
+    menu.add.button(title='RETRY', action=retry)
+    menu.add.button(title='RETURN TO MENU', action=return_to_menu)
+
+    while True:
+        clock.tick(FPS)
+        events = pygame.event.get()
+        for event in events:
+            if event.type == pygame.QUIT:
+                terminate()
+            if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                raise ReturnToMenuSignal
+        menu.draw(display)
+        menu.update(events)
         pygame.display.flip()
 
 
