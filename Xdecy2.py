@@ -105,7 +105,7 @@ class Assets:
             terminate()
 
         image = pygame.image.load(fullname)
-        if size is not None:
+        if im_size is not None:
             image = pg_scale(image, im_size)
         if colorkey is not None:
             if colorkey == -1:

@@ -1,5 +1,4 @@
-﻿numpy==1.22.0
-pygame==2.1.2
+﻿pygame==2.1.2
 pygame-menu==4.2.2
 
 
