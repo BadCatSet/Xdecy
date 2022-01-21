@@ -1,0 +1,20 @@
+h0 h0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 h0 h0
+h0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 h0
+b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0
+b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0
+b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0
+b0 b0 b0 b0 b0 s0 s0 s0 s0 s0 b0 b0 b0 b0 b0
+b0 b0 b0 b0 b0 s0 s0 h0 s0 s0 b0 b0 b0 b0 b0
+b0 b0 b0 b0 b0 b0 b0 b0 h1 s0 b0 b0 b0 b0 b0
+b0 b0 b0 b0 b0 s0 s0 h2 s0 s0 b0 b0 b0 b0 b0
+b0 b0 b0 b0 b0 s0 s0 s0 s0 s0 b0 b0 b0 b0 b0
+b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0
+b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0
+b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0
+h0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 h0
+h0 h0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 h0 h0
+1
+1-1-mag
+2
+7-7-item_healing_potion-45
+7-7.5-item_arrow-45

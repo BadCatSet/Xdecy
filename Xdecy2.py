@@ -20,17 +20,6 @@ import pygame_menu
 import pyrect
 
 
-def get_uid():
-    global last_given_uid
-    last_given_uid += 1
-    return last_given_uid
-
-
-def terminate():
-    pygame.quit()
-    exit()
-
-
 class GameOverSignal(Exception):
     pass
 
@@ -78,13 +67,13 @@ class Assets:
         path = 'resourcepacks/' + path
         self.PATH = path
         for i in self.NAME_BACKGROUND + self.NAME_HARD + self.NAME_SOFT:
-            self.load_image(i, cell_ss)
+            self.load_image(i, (cell_s, cell_s))
 
         for i in self.NAME_HALF_S:
-            self.load_image(i, half_d)
+            self.load_image(i, (half, half))
 
         for i in self.NAME_QUARTER_S:
-            self.load_image(i, quarter_d)
+            self.load_image(i, (quarter, quarter))
         for i in self.NAME_MONITOR_S:
             self.load_image(i, monitor_size)
 
@@ -222,7 +211,7 @@ class Item:
         self.amount = amount
 
     def can_pick(self):
-        return collision_with_circle(pl, self.x, self.y, player_radius)
+        return collision_with_circle(pl, self.x, self.y, pl.RADIUS)
 
     def pick(self):
         if self.item == 'item_healing_potion':
@@ -275,7 +264,8 @@ class Effect:
 
 
 class Entity:
-    DROP_CHANCES = {}
+    HEALTH_TEXT_COLOR = 255, 70, 70
+    RADIUS = 0
 
     def __init__(self, x, y):
         self.rect = Rect(x, y, 0.5, 0.5, enableFloat=True)
@@ -297,8 +287,7 @@ class Entity:
             pygame.mixer.Sound.play(assets.hit)
         if int(delta):
             temp_text.append(TempText(self.rect.centerx * cell_s, self.rect.centery * cell_s,
-                                      str(int(delta)),
-                                      TT_COLOR[0 if self.uid == pl.uid else 1]))
+                                      str(int(delta)), self.HEALTH_TEXT_COLOR))
 
     def check_damage_arrow(self):
         for i in projectiles:
@@ -308,16 +297,6 @@ class Entity:
                     self.apply_damage(i.damage)
                     if self.health <= 0:
                         projectiles.remove(i)
-
-    def check_death(self):
-        global score
-        if self.health <= 0:
-            for loot, poss in self.DROP_CHANCES.items():
-                if random.random() < poss:
-                    location.items.append(Item(self.rect.centerx, self.rect.centery, loot,
-                                               random.randrange(*DROP_AMOUNT[loot])))
-            score += 1
-            location.enemies.remove(self)
 
     def update(self):
         for i in self.effects:
@@ -341,7 +320,31 @@ class Entity:
         return self.__dict__
 
 
+class Enemy(Entity):
+    DROP_CHANCES = {}
+    HEALTH_TEXT_COLOR = 255, 255, 70
+    RADIUS = 1
+
+    def check_death(self):
+        global score
+        if self.health > 0:
+            return
+        for loot, poss in self.DROP_CHANCES.items():
+            if random.random() < poss:
+                location.items.append(Item(self.rect.centerx, self.rect.centery, loot,
+                                           random.randrange(*DROP_AMOUNT[loot])))
+        score += 1
+        location.enemies.remove(self)
+        for i in locations.values():
+            if i.enemies:
+                break
+        else:
+            raise GameOverSignal('win')
+
+
 class Player(Entity):
+    RADIUS = 1.25
+
     def __init__(self, x, y):
         super().__init__(x, y)
         self.image = assets.steve
@@ -361,9 +364,9 @@ class Player(Entity):
             dlx = 1
         else:
             dlx = 0
-            if can_move(self, dx, 0):
+            if can_move(self, dx, 0, mode='cm'):
                 self.rect.x += dx
-            elif can_move(self, sign(dx), 0):
+            elif can_move(self, sign(dx), 0, mode='cm'):
                 self.rect.x += sign(dx)
 
         if self.rect.y + dy < 0:
@@ -372,14 +375,14 @@ class Player(Entity):
             dly = 1
         else:
             dly = 0
-            if can_move(self, 0, dy):
+            if can_move(self, 0, dy, mode='cm'):
                 self.rect.y += dy
-            elif can_move(self, 0, sign(dy)):
+            elif can_move(self, 0, sign(dy), mode='cm'):
                 self.rect.y += sign(dy)
         return dlx, dly
 
 
-class Zombie(Entity):
+class Zombie(Enemy):
     DROP_CHANCES = {'item_healing_potion': 0.1, 'item_arrow': 0.2, 'item_gold_heart': 0.1,
                     'item_heart': 0.3}
 
@@ -397,23 +400,23 @@ class Zombie(Entity):
         super().update()
         cells = location.cells
         if self.cooldown < all_time:
-            if (self.rect.x - pl.rect.x) ** 2 + (self.rect.y - pl.rect.y) ** 2 < enemy_radius ** 2:
+            if (self.rect.x - pl.rect.x) ** 2 + (self.rect.y - pl.rect.y) ** 2 < self.RADIUS ** 2:
                 self.cooldown = all_time + self.max_cooldown + random.randrange(-400, 500)
                 pl.apply_damage(self.damage + random.randrange(-5, 9))
 
-        if (pl.rect.x - self.rect.x) ** 2 + (pl.rect.y - self.rect.y) ** 2 >= cell_s ** 2:
-            act = find_path(cells, self.rect.x, self.rect.y, pl.rect.x, pl.rect.y)
-            if len(act) > 1:
+        if (pl.rect.x - self.rect.x) ** 2 + (pl.rect.y - self.rect.y) ** 2 >= 1:
+            act = find_path(cells, *self.rect.center, *pl.rect.center)
+            if len(act) >= 2:
                 act = act[1]
                 dx = trim_value(act[0] + 0.25 - self.rect.x, self.speed, -self.speed)
-                dy = trim_value(act[1] + 0.25 - self.rect.y, self.speed, -self.speed)
-                if can_move(self, dx, 0):
+                dy = trim_value(act[1] + 0.25 - self.rect.x, self.speed, -self.speed)
+                if can_move(self, dx, 0, mode='cmb'):
                     self.rect.x += dx
-                if can_move(self, 0, dy):
+                if can_move(self, 0, dy, mode='cmb'):
                     self.rect.y += dy
 
 
-class Skeleton(Entity):
+class Skeleton(Enemy):
     DROP_CHANCES = {'item_healing_potion': 0.1, 'item_arrow': 0.6, 'item_gold_heart': 0.05,
                     'item_heart': 0.1}
 
@@ -448,18 +451,18 @@ class Skeleton(Entity):
                 self.cooldown = all_time + self.max_cooldown + random.randrange(-100, 100)
 
         else:
-            act = find_path(cells, self.rect.x, self.rect.y, pl.rect.x, pl.rect.y)
-            if len(act):
+            act = find_path(cells, *self.rect.center, *pl.rect.center)
+            if len(act) >= 2:
                 act = act[1]
                 dx = trim_value(act[0] + 0.25 - self.rect.x, self.speed, -self.speed)
                 dy = trim_value(act[1] + 0.25 - self.rect.x, self.speed, -self.speed)
-                if can_move(self, dx, 0):
+                if can_move(self, dx, 0, mode='cmb'):
                     self.rect.x += dx
-                if can_move(self, 0, dy):
+                if can_move(self, 0, dy, mode='cmb'):
                     self.rect.y += dy
 
 
-class Spider(Entity):
+class Spider(Enemy):
     DROP_CHANCES = {'item_healing_potion': 0.2, 'item_arrow': 0.0, 'item_gold_heart': 0.2,
                     'item_heart': 0.7}
 
@@ -475,28 +478,26 @@ class Spider(Entity):
 
     def update(self):
         super().update()
-
-        if self.cooldown < all_time:
-            if (self.rect.x - pl.rect.x) ** 2 + (self.rect.y - pl.rect.y) ** 2 < enemy_radius ** 2:
+        if (self.rect.x - pl.rect.x) ** 2 + (self.rect.y - pl.rect.y) ** 2 < self.RADIUS ** 2:
+            if self.cooldown < all_time:
                 self.cooldown = all_time + self.max_cooldown + random.randrange(-400, 500)
                 pl.apply_damage(self.damage)
                 pl.effects.append(Effect('health', 10000, -0.01 * difficulty, 300))
-        if (self.rect.x - pl.rect.x) ** 2 + (self.rect.y - pl.rect.y) ** 2 >= enemy_radius ** 2:
+        else:
             dx = trim_value(pl.rect.x - self.rect.x, self.speed, -self.speed)
             dy = trim_value(pl.rect.y - self.rect.y, self.speed, -self.speed)
-            if can_move(self, dx, 0, mode='m'):
-                if can_move(self, dx, 0, mode='c'):
-                    self.rect.x += dx
-                else:
-                    self.rect.x += dx // 2
-            if can_move(self, 0, dy, mode='m'):
-                if can_move(self, 0, dy, mode='c'):
-                    self.rect.y += dy
-                else:
-                    self.rect.y += dy // 2
+
+            if can_move(self, dx, 0, mode='cmb'):
+                self.rect.x += dx
+            elif can_move(self, dx / 2, 0, mode='mb'):
+                self.rect.x += dx / 2
+            if can_move(self, 0, dy, mode='cmb'):
+                self.rect.y += dy
+            elif can_move(self, 0, dy / 2, mode='mb'):
+                self.rect.y += dy / 2
 
 
-class Mag(Entity):
+class Mag(Enemy):
     DROP_CHANCES = {'item_healing_potion': 0.2, 'item_arrow': 0.1, 'item_gold_heart': 0.5,
                     'item_heart': 0.05}
 
@@ -532,8 +533,8 @@ class MagCircle:
         self.y = y
         self.s = s
         self.d = d
-        self.end_time = all_time + time_delta
         self.start_time = all_time
+        self.end_time = all_time + time_delta
 
     def update(self):
         if self.end_time < all_time:
@@ -548,8 +549,7 @@ class MagCircle:
         pygame.draw.circle(surface, (255, 100, 0),
                            (self.x * cell_s + cam_dx, self.y * cell_s + cam_dy),
                            self.s * cell_s * interpolate(all_time,
-                                                         self.start_time,
-                                                         self.end_time,
+                                                         self.start_time, self.end_time,
                                                          0, 1))
 
 
@@ -574,7 +574,15 @@ class TempText:
         surface.blit(self.text, (self.x + cam_dx, self.y + cam_dy))
 
 
-class Sword:
+class Weapon:
+    def on_tick(self, is_pressed, time_d):
+        pass
+
+    def draw(self, surface: Surface):
+        pass
+
+
+class Sword(Weapon):
     DEFAULT_COOLDOWN = 500
     ATTACK_TIME = 150
     DAMAGE = -50
@@ -590,7 +598,7 @@ class Sword:
         self.forbidden_damages = []
 
     # noinspection PyUnusedLocal
-    def on_tick(self, is_pressed, mouse_pos, time_d):
+    def on_tick(self, is_pressed, time_d):
         if all_time - self.last_use > self.DEFAULT_COOLDOWN and is_pressed:
             self.forbidden_damages = []
             self.last_use = all_time
@@ -625,17 +633,16 @@ class Sword:
             return
 
         area = [(x * cell_s + cam_dx, y * cell_s + cam_dy) for x, y in self.area]
-        print(area)
         pygame.draw.polygon(surface, (255, 255, 255), area, 0)
 
 
-class Bow:
+class Bow(Weapon):
     MAX_TENSION = 2000
 
     def __init__(self):
         self.tension = 0
 
-    def on_tick(self, is_pressed, mouse_pos, time_d):
+    def on_tick(self, is_pressed, time_d):
         if pl.arrows <= 0:
             return
         if is_pressed:
@@ -665,82 +672,44 @@ class Bow:
             surface.blit(get_text(str(count_damage(self.tension))), (tx, ty))
 
 
-pygame.init()
+class Potions(Weapon):
+    DAMAGE = 100
+    RADIUS = 1.2
 
-debug = 0  # DEBUG!
-FPS = 60
+    def __init__(self):
+        self.was_pressed = False
 
-NAME_ENEMY = {'zombie': Zombie, 'skeleton': Skeleton, 'spider': Spider, 'mag': Mag}
+    def on_tick(self, is_pressed, time_d):
+        if not is_pressed and self.was_pressed and pl.potions > 0:
+            pl.potions -= 1
 
-LOOT_LIST = ['item_healing_potion', 'item_arrow', 'item_gold_heart', 'item_heart']  # unused
-PICK_PRIORITY = ['item_gold_heart', 'item_heart', 'item_healing_potion', 'item_arrow']
-DROP_AMOUNT = {'item_healing_potion': (1, 4), 'item_arrow': (2, 6), 'item_gold_heart': (10, 20),
-               'item_heart': (15, 30)}
+            for entity in location.enemies + [pl]:
+                if collision_with_circle(entity, (mouse_pos[0] - cam_dx) // cell_s,
+                                         (mouse_pos[1] - cam_dy) // cell_s,
+                                         self.RADIUS):
+                    if type(entity) in {Skeleton, Zombie, Mag}:
+                        entity.apply_damage(-self.DAMAGE)
+                    else:
+                        entity.apply_damage(self.DAMAGE)
+                    if entity is pl:
+                        entity.effects = [i for i in entity.effects if i.amplifier > 0]
+        self.was_pressed = is_pressed
 
-difficulty = 1
+    def draw(self, surface: Surface):
+        if self.was_pressed:
+            pygame.draw.circle(surface, (200, 200, 200), (mouse_pos[0], mouse_pos[1]),
+                               self.RADIUS * cell_s, 2)
 
-monitor_size = [pygame.display.Info().current_w, pygame.display.Info().current_h]
-DISPLAY_S = min(monitor_size)
-display = pygame.display.set_mode(monitor_size)
 
-clock = pygame.time.Clock()
+def get_uid():
+    global last_given_uid
+    last_given_uid += 1
+    return last_given_uid
 
-PF_FINDER = AStarFinder(diagonal_movement=DiagonalMovement.always)
 
-TT_COLOR = [(255, 70, 70), (255, 255, 70)]
-
-SPLASH_POTION_AMPLIFIER = 100
-
-all_time = 0
-score = 0
-
-size = 0
-
-cell_s = 100
-half = cell_s / 2
-quarter = cell_s / 4
-half_d = (half, half)  # half doubled
-cell_ss = (cell_s, cell_s)
-quarter_d = (quarter, quarter)  # quarter doubled
-player_radius = 1.25
-splash_potion_radius = 1.2
-enemy_radius = 1
-arrow_size = (cell_s, cell_s * 3 // 8)
-cam_dx = 0
-cam_dy = 0
-
-last_given_uid = -1
-forbidden_damages = []
-
-projectiles = []
-temp_text = []
-mag_circles = []
-locations = dict()
-locations_names = []
-
-assets = Assets('standard/')
-
-# will be set in run_game()
-pl = Player(0, 0)
-sword = Sword()
-bow = Bow()
-location = Location([], [], [])
-
-theme = pygame_menu.themes.THEME_BLUE.copy()
-theme.title_background_color = 50, 50, 50
-theme.title_font_color = 255, 20, 19
-theme.title_font_shadow = False
-theme.title_font = pygame_menu.font.FONT_OPEN_SANS_BOLD
-
-theme.widget_font_size = 40
-theme.background_color = 33, 33, 33
-theme.widget_font_color = 20, 255, 236
-theme.selection_color = 255, 236, 20
-theme.widget_selection_effect = pygame_menu.widgets.selection.LeftArrowSelection()
-theme.widget_font = pygame_menu.font.FONT_OPEN_SANS_BOLD
-
-game_over_theme = theme.copy()
-game_over_theme.title_bar_style = pygame_menu.themes.MENUBAR_STYLE_SIMPLE
+def terminate():
+    pygame.quit()
+    exit()
 
 
 def load_location(path, coord):
@@ -776,15 +745,16 @@ def load_level(path):
 
 
 def run_game(path):
-    global all_time, size, locations, location, score
+    global all_time, size, locations, location, score, mouse_pos
     score = 0
     shlopa_ending = False
-    throwing_mode = False
+
     load_level(path)
     location = locations[(0, 0)]
 
     while pl.health > 0:
         time_d = clock.tick(FPS)
+        all_time += time_d
 
         keys = pygame.key.get_pressed()
         mouse = pygame.mouse.get_pressed(3)
@@ -796,33 +766,6 @@ def run_game(path):
                 terminate()
             if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
                 raise ExitGameSignal
-
-        if keys[pygame.K_f] and pl.potions:
-            throwing_mode = True
-            display_update()
-            pygame.draw.circle(display, (200, 200, 200), (mouse_pos[0], mouse_pos[1]),
-                               splash_potion_radius * cell_s, 2)
-            pygame.display.flip()
-            continue
-
-        elif throwing_mode:
-            throwing_mode = False
-            pl.potions -= 1
-
-            for entity in location.enemies + [pl]:
-                if collision_with_circle(entity, (mouse_pos[0] - cam_dx) // cell_s,
-                                         (mouse_pos[1] - cam_dy) // cell_s,
-                                         splash_potion_radius):
-                    if type(entity) in {Skeleton, Zombie, Mag}:
-                        entity.apply_damage(-SPLASH_POTION_AMPLIFIER)
-                    else:
-                        entity.apply_damage(SPLASH_POTION_AMPLIFIER)
-                    if entity is pl:
-                        entity.effects = [i for i in entity.effects if i.amplifier > 0]
-
-        all_time += time_d
-
-        for event in events:
             if event.type == pygame.KEYDOWN and event.key == pygame.K_e:
                 to_pick = [i for i in location.items if i.can_pick()]
                 if len(to_pick):
@@ -830,9 +773,9 @@ def run_game(path):
                     t.pick()
                     location.items.remove(t)
 
-        bow.on_tick(mouse[0], mouse_pos, time_d)
-
-        sword.on_tick(mouse[2], mouse_pos, time_d)
+        bow.on_tick(mouse[0], time_d)
+        sword.on_tick(mouse[2], time_d)
+        potions.on_tick(keys[pygame.K_f], time_d)
 
         # player
         pl.update()
@@ -892,7 +835,7 @@ def run_game(path):
             if event.type == pygame.QUIT:
                 terminate()
             if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
-                raise GameOverSignal
+                break
         display.blit(assets.death_screen, (0, 0))
         pygame.display.flip()
     if pl.lx == pl.ly == 0 and pl.rect.x == pl.rect.y == 1 and shlopa_ending:
@@ -904,10 +847,10 @@ def run_game(path):
                 if event.type == pygame.QUIT:
                     terminate()
                 if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
-                    raise GameOverSignal
+                    break
             display.blit(assets.shlopa_screen, (0, 0))
             pygame.display.flip()
-    raise GameOverSignal
+    raise GameOverSignal('loose')
 
 
 def display_update():
@@ -959,6 +902,7 @@ def display_update():
     # weapons
     sword.draw(display)
     bow.draw(display)
+    potions.draw(display)
     # gui
 
     for n, i in enumerate(pl.effects):
@@ -990,7 +934,7 @@ def run_menu():
 
     l_length = max(map(lambda x: len(x), level_names))
     for i in range(len(level_names)):
-        level_names[i] = (level_names[i].ljust(l_length, ' '), level_names[1])
+        level_names[i] = (level_names[i].ljust(l_length, ' '), level_names[i])
 
     t_length = max(map(lambda x: len(x), assets_names))
     for i in range(len(assets_names)):
@@ -1002,12 +946,16 @@ def run_menu():
 
     def start_game():
         try:
-            run_game(sl.get_value()[0][1])
+            values = sl.get_value()
+            run_game(values[0][1])
         except ExitGameSignal:
             return False
-        except GameOverSignal:
+        except GameOverSignal as e:
             try:
-                run_menu_game_over()
+                if str(e) == 'loose':
+                    run_menu_game_over()
+                if str(e) == 'win':
+                    run_menu_game_win()
             except ReturnToMenuSignal:
                 return False
             except RetrySignal:
@@ -1021,11 +969,11 @@ def run_menu():
                             width=monitor_size[0], height=monitor_size[1],
                             theme=theme)
     menu.add.button('START GAME', start_game_core)
-    # noinspection PyTypeChecker
+
     sr = menu.add.selector(title='RESOURCEPACK: ',
                            items=assets_names,
                            onchange=change_assets)
-    # noinspection PyTypeChecker
+
     sl = menu.add.selector(title='LEVEL: ',
                            items=level_names)
     menu.add.button('QUIT', pygame_menu.events.EXIT)
@@ -1083,11 +1031,43 @@ def run_menu_game_over():
         pygame.display.flip()
 
 
-def get_text(mess, font_color=(0, 0, 0), font_type=assets.PATH + 'font.ttf', font_size=15):
+def run_menu_game_win():
+    def retry():
+        raise RetrySignal
+
+    def return_to_menu():
+        raise ReturnToMenuSignal
+
+    menu = pygame_menu.Menu(title='YOU WIN',
+                            width=monitor_size[0], height=monitor_size[1],
+                            theme=game_over_theme)
+    menu.add.label(title=f'SCORE: {score}')
+    menu.add.button(title='RETRY', action=retry)
+    menu.add.button(title='RETURN TO MENU', action=return_to_menu)
+
+    while True:
+        clock.tick(FPS)
+        events = pygame.event.get()
+        for event in events:
+            if event.type == pygame.QUIT:
+                terminate()
+            if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                raise ReturnToMenuSignal
+        menu.draw(display)
+        menu.update(events)
+        pygame.display.flip()
+
+
+# noinspection PyUnboundLocalVariable
+def get_text(mess, font_color=(0, 0, 0), font_type=None, font_size=15):
+    if font_type is None:
+        font_type = assets.PATH + 'font.ttf'
     return pygame.font.Font(font_type, font_size).render(mess, True, font_color)
 
 
-def find_path(mat, x1, y1, x2, y2):
+def find_path(mat, x1, y1, x2, y2, iq=False):
+    if not iq:
+        return [(x2, y2), (x2, y2), (x2, y2)]
     mat = [[(1 if mat[i][j].tile in assets.NAME_BACKGROUND else 0)
             for i in range(size)] for j in range(size)]
     grid = Grid(size, size, mat)
@@ -1122,6 +1102,10 @@ def can_move(self, dx, dy, mode='cm'):
                 continue
             if i.rect.collide(rect):
                 return False
+
+    if 'b' in mode:
+        if rect.left < 0 or rect.right > size - 1 or rect.top < 0 or rect.bottom > size - 1:
+            return False
     return True
 
 
@@ -1169,5 +1153,75 @@ def count_damage(tension):
 def interpolate(x, in_min, in_max, out_min, out_max):
     return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min
 
+
+pygame.init()
+
+debug = 0  # DEBUG!
+FPS = 60
+
+NAME_ENEMY = {'zombie': Zombie, 'skeleton': Skeleton, 'spider': Spider, 'mag': Mag}
+
+LOOT_LIST = ['item_healing_potion', 'item_arrow', 'item_gold_heart', 'item_heart']  # unused
+PICK_PRIORITY = ['item_gold_heart', 'item_heart', 'item_healing_potion', 'item_arrow']
+DROP_AMOUNT = {'item_healing_potion': (1, 4), 'item_arrow': (2, 6), 'item_gold_heart': (10, 20),
+               'item_heart': (15, 30)}
+
+difficulty = 1
+
+monitor_size = [pygame.display.Info().current_w, pygame.display.Info().current_h]
+DISPLAY_S = min(monitor_size)
+display = pygame.display.set_mode(monitor_size)
+
+clock = pygame.time.Clock()
+
+PF_FINDER = AStarFinder(diagonal_movement=DiagonalMovement.always)
+
+all_time = 0
+mouse_pos = (0, 0)
+score = 0
+
+size = 0
+
+cell_s = 100
+half = cell_s / 2
+quarter = cell_s / 4
+
+arrow_size = (cell_s, cell_s * 3 // 8)
+cam_dx = 0
+cam_dy = 0
+
+last_given_uid = -1
+forbidden_damages = []
+
+projectiles = []
+temp_text = []
+mag_circles = []
+locations = dict()
+locations_names = []
+
+assets = Assets('standard/')
+
+# will be set in run_game()
+pl = Player(0, 0)
+sword = Sword()
+bow = Bow()
+potions = Potions()
+location = Location([], [], [])
+
+theme = pygame_menu.themes.THEME_BLUE.copy()
+theme.title_background_color = 50, 50, 50
+theme.title_font_color = 255, 20, 19
+theme.title_font_shadow = False
+theme.title_font = pygame_menu.font.FONT_OPEN_SANS_BOLD
+
+theme.widget_font_size = 40
+theme.background_color = 33, 33, 33
+theme.widget_font_color = 20, 255, 236
+theme.selection_color = 255, 236, 20
+theme.widget_selection_effect = pygame_menu.widgets.selection.LeftArrowSelection()
+theme.widget_font = pygame_menu.font.FONT_OPEN_SANS_BOLD
+
+game_over_theme = theme.copy()
+game_over_theme.title_bar_style = pygame_menu.themes.MENUBAR_STYLE_SIMPLE
 
 run_menu()
