@@ -267,7 +267,7 @@ class Effect:
         return self.time_to_del < all_time
 
     def draw(self, surface: Surface, n):
-        surface.blit(self.image, (monitor_size[0] - half * n + cam_dx, cam_dy))
+        surface.blit(self.image, (monitor_size[0] - half * (n + 1), 0))
 
 
 class Entity:
@@ -863,7 +863,7 @@ def run_game(path):
             if event.type == pygame.QUIT:
                 terminate()
             if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
-                break
+                timer = 8000
         display.blit(assets.death_screen, (0, 0))
         pygame.display.flip()
     if pl.lx == pl.ly == 0 and pl.rect.x == pl.rect.y == 1 and shlopa_ending:
@@ -875,7 +875,7 @@ def run_game(path):
                 if event.type == pygame.QUIT:
                     terminate()
                 if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
-                    break
+                    timer = 20000
             display.blit(assets.shlopa_screen, (0, 0))
             pygame.display.flip()
     raise GameOverSignal('loose')
