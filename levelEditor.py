@@ -17,8 +17,9 @@ def load_image(path, scale: tuple = None, colorkey: tuple[int, int, int] = None)
 
 
 class NewField:
-    def __init__(self, monitor_size, path):
+    def __init__(self, monitor_size, path: str, save_path: str):
         self.path = path
+        self.save_path = save_path
         self.blocks_paths = dict()
         for i in range(9):
             self.blocks_paths[f'b{i}'] = load_image(
@@ -67,7 +68,6 @@ class NewField:
             screen.blit(self.item_map_paths[item[0]],
                         (self.x0 + item[1] * 50, self.y0 + item[2] * 50))
         for mob in self.mobs:
-            print(self.mob_map_paths, mob[0])
             screen.blit(self.mob_map_paths[mob[0]], (self.x0 + mob[1] * 50, self.y0 + mob[2] * 50))
 
     def get_rect(self):
@@ -77,7 +77,11 @@ class NewField:
         self.field[y // 50][x // 50] = selected_block
 
     def save_level(self):
-        with open(f'{self.path}\\saves\\created\\new_level.txt', mode='w', encoding='utf-8') as f:
+        slash = '\\'
+        os.mkdir(f'{self.path.replace(slash, "/")}/{self.save_path}')
+        path_to_save = f'{self.path.replace(slash, "/")}/{self.save_path}/new_level.txt'
+        print(path_to_save)
+        with open(path_to_save, mode='w', encoding='utf-8') as f:
             for line in self.field:
                 f.write(f"{' '.join(line)}\n")
             f.write(f"{str(len(self.mobs))}\n")
@@ -135,12 +139,12 @@ def isCoordsInRect(coords: tuple[int, int], rect: tuple[int, int, int, int]):
            coords[1] in range(rect[1], rect[1] + rect[3] + 1)
 
 
-def main():
+def main(save_path):
     pygame.init()
     monitor_size = (pygame.display.Info().current_w, pygame.display.Info().current_h)
     path = '\\'.join(abspath(__file__).split('\\')[:-1])
 
-    new_field = NewField(monitor_size, path)
+    new_field = NewField(monitor_size, path, save_path)
     field_rect = new_field.get_rect()
 
     exitButton = TextButton("Выйти", monitor_size[0] - 100, 20, 30)
@@ -229,5 +233,5 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    main('saves/created/')
     pygame.quit()

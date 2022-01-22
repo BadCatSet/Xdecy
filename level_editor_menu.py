@@ -4,6 +4,8 @@ import pygame
 from pygame.transform import scale as pg_scale
 import pygame_menu
 
+from levelEditor import main
+
 
 class ToStartMenu(Exception):
     pass
@@ -139,7 +141,7 @@ def run_menu_start():
 
 def run_menu_new_level():
     def create():
-        print('create level with name %s' % level_name.get_value())
+        main(level_name.get_value())
         raise ToStartMenu
 
     def back():
