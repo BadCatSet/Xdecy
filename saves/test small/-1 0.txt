@@ -1,0 +1,18 @@
+h0 h0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 h0 h0
+h0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 h0
+b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0
+b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0
+b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0
+b0 b0 b0 b0 b0 s0 s0 s0 s0 s0 b0 b0 b0 b0 b0
+b0 b0 b0 b0 b0 s0 s0 s0 s0 s0 b0 b0 h0 b0 b0
+b0 b0 b0 b0 b0 s0 s0 s0 s0 s0 h0 h0 h0 h0 b0
+b0 b0 b0 b0 b0 s0 s0 s0 s0 s0 b0 b0 h0 b0 b0
+b0 b0 b0 b0 b0 s0 s0 s0 s0 s0 b0 b0 b0 b0 b0
+b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0
+b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0
+b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0
+h0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 h0
+h0 h0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 h0 h0
+1
+2-2-zombie
+0
