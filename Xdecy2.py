@@ -47,6 +47,9 @@ class Rect(pyrect.Rect):
         pg_rect = pgRect(self.x * cell_s, self.y * cell_s, self.w * cell_s, self.h * cell_s)
         return bool(pg_rect.clipline(x1 * cell_s, y1 * cell_s, x2 * cell_s, y2 * cell_s))
 
+    def distance_squared(self, other):
+        return (self.x - other.x) ** 2 + (self.y - other.y) ** 2
+
 
 class Assets:
     PATH = ''
@@ -146,6 +149,10 @@ class Location:
         self.cells[x][y].kill()
         self.cells[x][y] = Cell(x, y, 'b0', self)
 
+    def get_pathfinder_map(self):
+        return [[(1 if self.cells[x][y].tile in assets.NAME_BACKGROUND else 0)
+                 for x in range(size)] for y in range(size)]
+
     def __getitem__(self, coord):
         x, y = coord
         return self.cells[x][y]
@@ -211,7 +218,7 @@ class Item:
         self.amount = amount
 
     def can_pick(self):
-        return collision_with_circle(pl, self.x, self.y, pl.RADIUS)
+        return pl.collision_with_circle(self.x, self.y, pl.RADIUS)
 
     def pick(self):
         if self.item == 'item_healing_potion':
@@ -271,6 +278,9 @@ class Entity:
         self.rect = Rect(x, y, 0.5, 0.5, enableFloat=True)
         self.image = None
 
+        self.max_cooldown_range = (0, 0)
+        self.cooldown = 0
+
         self.max_health = 0
         self.health = self.max_health
 
@@ -316,6 +326,13 @@ class Entity:
         surface.blit(get_text(str(int(self.health))),
                      (self.rect.x * cell_s + cam_dx, self.rect.y * cell_s - 15 + cam_dy))
 
+    def collision_with_circle(self, x, y, r):
+        sx, sy = self.rect.center
+        return (sx - x) ** 2 + (sy - y) ** 2 < (r + 0.25) ** 2
+
+    def max_cooldown(self):
+        return random.randrange(*self.max_cooldown_range)
+
     def __repr__(self):
         return self.__dict__
 
@@ -324,6 +341,25 @@ class Enemy(Entity):
     DROP_CHANCES = {}
     HEALTH_TEXT_COLOR = 255, 255, 70
     RADIUS = 1
+    BREAK_ACT_DISTANCE = 1.5
+
+    def __init__(self, x, y):
+        super().__init__(x, y)
+        self.act = []
+        self.mat = []
+
+    def get_act(self):
+        sx, sy = self.rect.topleft
+        while self.act:
+            ax, ay = self.act[0]
+            if (ax + 0.25 - sx) ** 2 + (ay + 0.25 - sy) ** 2 < self.BREAK_ACT_DISTANCE ** 2:
+                self.act.pop(0)
+            else:
+                return ax + 0.5, ay + 0.5
+        return pl.rect.center
+
+    def recount_act(self, mat):
+        self.act = find_path(mat, *self.rect.center, *pl.rect.center)
 
     def check_death(self):
         global score
@@ -366,8 +402,8 @@ class Player(Entity):
             dlx = 0
             if can_move(self, dx, 0, mode='cm'):
                 self.rect.x += dx
-            elif can_move(self, sign(dx), 0, mode='cm'):
-                self.rect.x += sign(dx)
+            elif can_move(self, sign(dx) / cell_s, 0, mode='cm'):
+                self.rect.x += sign(dx) / cell_s
 
         if self.rect.y + dy < 0:
             dly = -1
@@ -377,8 +413,8 @@ class Player(Entity):
             dly = 0
             if can_move(self, 0, dy, mode='cm'):
                 self.rect.y += dy
-            elif can_move(self, 0, sign(dy), mode='cm'):
-                self.rect.y += sign(dy)
+            elif can_move(self, 0, sign(dy) / cell_s, mode='cm'):
+                self.rect.y += sign(dy) / cell_s
         return dlx, dly
 
 
@@ -389,31 +425,26 @@ class Zombie(Enemy):
     def __init__(self, x, y):
         super().__init__(x, y)
         self.image = assets.zombie
-        self.max_cooldown = 500
-        self.cooldown = random.randrange(0, self.max_cooldown)
-        self.speed = 0.8 / FPS
+        self.max_cooldown_range = (100, 1000)
+        self.speed = 2 / FPS
         self.damage = -11 * difficulty
         self.max_health = 500 * difficulty
         self.health = self.max_health
 
     def update(self):
         super().update()
-        cells = location.cells
-        if self.cooldown < all_time:
-            if (self.rect.x - pl.rect.x) ** 2 + (self.rect.y - pl.rect.y) ** 2 < self.RADIUS ** 2:
-                self.cooldown = all_time + self.max_cooldown + random.randrange(-400, 500)
-                pl.apply_damage(self.damage + random.randrange(-5, 9))
+        if self.rect.distance_squared(pl.rect) < self.RADIUS ** 2 and self.cooldown < all_time:
+            self.cooldown = all_time + self.max_cooldown()
+            pl.apply_damage(self.damage + random.randrange(-5, 9))
 
-        if (pl.rect.x - self.rect.x) ** 2 + (pl.rect.y - self.rect.y) ** 2 >= 1:
-            act = find_path(cells, *self.rect.center, *pl.rect.center)
-            if len(act) >= 2:
-                act = act[1]
-                dx = trim_value(act[0] + 0.25 - self.rect.x, self.speed, -self.speed)
-                dy = trim_value(act[1] + 0.25 - self.rect.x, self.speed, -self.speed)
-                if can_move(self, dx, 0, mode='cmb'):
-                    self.rect.x += dx
-                if can_move(self, 0, dy, mode='cmb'):
-                    self.rect.y += dy
+        act = self.get_act()
+        dx = clip_value(act[0] - self.rect.centerx, self.speed, -self.speed)
+        dy = clip_value(act[1] - self.rect.centery, self.speed, -self.speed)
+
+        if can_move(self, dx, 0, mode='cmb'):
+            self.rect.x += dx
+        if can_move(self, 0, dy, mode='cmb'):
+            self.rect.y += dy
 
 
 class Skeleton(Enemy):
@@ -423,9 +454,9 @@ class Skeleton(Enemy):
     def __init__(self, x, y):
         super().__init__(x, y)
         self.image = assets.skeleton
-        self.max_cooldown = 300
-        self.cooldown = random.randrange(0, self.max_cooldown)
-        self.speed = 0.6 / FPS
+        self.max_cooldown_range = (200, 400)
+        self.cooldown = self.max_cooldown()
+        self.speed = 3 / FPS
         self.tension = 500 * difficulty
         self.max_health = 80 * difficulty
         self.health = self.max_health
@@ -448,18 +479,15 @@ class Skeleton(Enemy):
                 for i in locations[(pl.lx, pl.ly)].enemies:
                     arrow.forbidden_damages.append(i.uid)
                 projectiles.append(arrow)
-                self.cooldown = all_time + self.max_cooldown + random.randrange(-100, 100)
-
+                self.cooldown = all_time + self.max_cooldown()
         else:
-            act = find_path(cells, *self.rect.center, *pl.rect.center)
-            if len(act) >= 2:
-                act = act[1]
-                dx = trim_value(act[0] + 0.25 - self.rect.x, self.speed, -self.speed)
-                dy = trim_value(act[1] + 0.25 - self.rect.x, self.speed, -self.speed)
-                if can_move(self, dx, 0, mode='cmb'):
-                    self.rect.x += dx
-                if can_move(self, 0, dy, mode='cmb'):
-                    self.rect.y += dy
+            act = self.get_act()
+            dx = clip_value(act[0] - self.rect.centerx, self.speed, -self.speed)
+            dy = clip_value(act[1] - self.rect.centery, self.speed, -self.speed)
+            if can_move(self, dx, 0, mode='cmb'):
+                self.rect.x += dx
+            if can_move(self, 0, dy, mode='cmb'):
+                self.rect.y += dy
 
 
 class Spider(Enemy):
@@ -469,32 +497,31 @@ class Spider(Enemy):
     def __init__(self, x, y):
         super().__init__(x, y)
         self.image = assets.spider
-        self.max_cooldown = 2000
-        self.cooldown = random.randrange(0, self.max_cooldown)
-        self.speed = 0.8 / FPS
+        self.max_cooldown_range = (1600, 2500)
+        self.cooldown = self.max_cooldown()
+        self.speed = 1.5 / FPS
         self.damage = -3 * difficulty
         self.max_health = 450 * difficulty
         self.health = self.max_health
 
     def update(self):
         super().update()
-        if (self.rect.x - pl.rect.x) ** 2 + (self.rect.y - pl.rect.y) ** 2 < self.RADIUS ** 2:
+        if self.rect.distance_squared(pl.rect) < self.RADIUS ** 2:
             if self.cooldown < all_time:
-                self.cooldown = all_time + self.max_cooldown + random.randrange(-400, 500)
-                pl.apply_damage(self.damage)
+                self.cooldown = all_time + self.max_cooldown()
                 pl.effects.append(Effect('health', 10000, -0.01 * difficulty, 300))
-        else:
-            dx = trim_value(pl.rect.x - self.rect.x, self.speed, -self.speed)
-            dy = trim_value(pl.rect.y - self.rect.y, self.speed, -self.speed)
 
-            if can_move(self, dx, 0, mode='cmb'):
-                self.rect.x += dx
-            elif can_move(self, dx / 2, 0, mode='mb'):
-                self.rect.x += dx / 2
-            if can_move(self, 0, dy, mode='cmb'):
-                self.rect.y += dy
-            elif can_move(self, 0, dy / 2, mode='mb'):
-                self.rect.y += dy / 2
+        dx = clip_value(pl.rect.x - self.rect.x, self.speed, -self.speed)
+        dy = clip_value(pl.rect.y - self.rect.y, self.speed, -self.speed)
+
+        if can_move(self, dx, 0, mode='cmb'):
+            self.rect.x += dx
+        elif can_move(self, dx / 2, 0, mode='mb'):
+            self.rect.x += dx / 2
+        if can_move(self, 0, dy, mode='cmb'):
+            self.rect.y += dy
+        elif can_move(self, 0, dy / 2, mode='mb'):
+            self.rect.y += dy / 2
 
 
 class Mag(Enemy):
@@ -504,7 +531,8 @@ class Mag(Enemy):
     def __init__(self, x, y):
         super().__init__(x, y)
         self.image = assets.mag
-        self.cooldown = 1000 + all_time
+        self.max_cooldown_range = (2000, 3000)
+        self.cooldown = self.max_cooldown()
         self.speed = 1.1 / FPS
         self.damage = -100 * difficulty
         self.max_health = 125 * difficulty
@@ -517,10 +545,6 @@ class Mag(Enemy):
             multiplier = random.randrange(9, 12) / 10
             mag_circles.append(MagCircle(*pl.rect.center, self.damage * multiplier,
                                          0.5 * multiplier, self.get_detonation_time()))
-
-    @staticmethod
-    def max_cooldown():
-        return random.randrange(2000, 3000)
 
     @staticmethod
     def get_detonation_time():
@@ -538,7 +562,7 @@ class MagCircle:
 
     def update(self):
         if self.end_time < all_time:
-            if collision_with_circle(pl, self.x + 0.25, self.y + 0.25, self.s):
+            if pl.collision_with_circle(self.x + 0.25, self.y + 0.25, self.s):
                 pl.apply_damage(self.d)
             mag_circles.remove(self)
 
@@ -646,7 +670,7 @@ class Bow(Weapon):
         if pl.arrows <= 0:
             return
         if is_pressed:
-            self.tension = trim_value(self.tension + time_d, self.MAX_TENSION, 0)
+            self.tension = clip_value(self.tension + time_d, self.MAX_TENSION, 0)
         elif self.tension:
             pl.arrows -= 1
             arrow = Arrow(pl.rect.center,
@@ -684,13 +708,12 @@ class Potions(Weapon):
             pl.potions -= 1
 
             for entity in location.enemies + [pl]:
-                if collision_with_circle(entity, (mouse_pos[0] - cam_dx) // cell_s,
-                                         (mouse_pos[1] - cam_dy) // cell_s,
-                                         self.RADIUS):
+                if entity.collision_with_circle((mouse_pos[0] - cam_dx) / cell_s, (mouse_pos[1] - cam_dy) / cell_s,
+                                                self.RADIUS):
                     if type(entity) in {Skeleton, Zombie, Mag}:
                         entity.apply_damage(-self.DAMAGE)
                     else:
-                        entity.apply_damage(self.DAMAGE)
+                        entity.effects.append(Effect('health', 1000, 0.1, 300))
                     if entity is pl:
                         entity.effects = [i for i in entity.effects if i.amplifier > 0]
         self.was_pressed = is_pressed
@@ -772,6 +795,11 @@ def run_game(path):
                     t = min(to_pick, key=lambda x: PICK_PRIORITY.index(x.item))
                     t.pick()
                     location.items.remove(t)
+            if event.type == ACT_RECOUNT_EVENT:
+                mat = location.get_pathfinder_map()
+                for i in location.enemies:
+                    i.recount_act(mat)
+                    i.mat = mat
 
         bow.on_tick(mouse[0], time_d)
         sword.on_tick(mouse[2], time_d)
@@ -859,14 +887,14 @@ def display_update():
     if size * cell_s < monitor_size[0]:
         cam_dx = monitor_size[0] // 2 - size * cell_s // 2
     else:
-        cam_dx = trim_value(monitor_size[0] // 2 - plx,
+        cam_dx = clip_value(monitor_size[0] // 2 - plx,
                             0,
                             monitor_size[0] - size * cell_s)
 
     if size * cell_s < monitor_size[1]:
         cam_dy = monitor_size[1] // 2 - size * cell_s // 2
     else:
-        cam_dy = trim_value(monitor_size[1] // 2 - ply,
+        cam_dy = clip_value(monitor_size[1] // 2 - ply,
                             0,
                             monitor_size[1] - size * cell_s)
 
@@ -1058,24 +1086,25 @@ def run_menu_game_win():
         pygame.display.flip()
 
 
-# noinspection PyUnboundLocalVariable
 def get_text(mess, font_color=(0, 0, 0), font_type=None, font_size=15):
     if font_type is None:
         font_type = assets.PATH + 'font.ttf'
     return pygame.font.Font(font_type, font_size).render(mess, True, font_color)
 
 
-def find_path(mat, x1, y1, x2, y2, iq=False):
+def find_path(mat: list[list[int]], x1, y1, x2, y2, iq=1):
     if not iq:
         return [(x2, y2), (x2, y2), (x2, y2)]
-    mat = [[(1 if mat[i][j].tile in assets.NAME_BACKGROUND else 0)
-            for i in range(size)] for j in range(size)]
     grid = Grid(size, size, mat)
-    start = grid.node(int(x1), int(y1))
-    end = grid.node(int(x2), int(y2))
+    start = grid.node(cr(x1), cr(y1))
+    end = grid.node(cr(x2), cr(y2))
 
     path, runs = PF_FINDER.find_path(start, end, grid)
     return path
+
+
+def cr(v):
+    return clip_value(int(v), size - 1, 0)
 
 
 def unique_pairs(r_x, r_y):
@@ -1104,16 +1133,12 @@ def can_move(self, dx, dy, mode='cm'):
                 return False
 
     if 'b' in mode:
-        if rect.left < 0 or rect.right > size - 1 or rect.top < 0 or rect.bottom > size - 1:
+        if rect.left < 0 or rect.right > size or rect.top < 0 or rect.bottom > size:
             return False
     return True
 
 
-def collision_with_circle(i: Entity, x, y, r):
-    return (i.rect.centerx - x) ** 2 + (i.rect.centery - y) ** 2 < (r + 0.25) ** 2
-
-
-def trim_value(v, ma, mi):
+def clip_value(v, ma, mi):
     if v < mi:
         return mi
     if v > ma:
@@ -1127,6 +1152,8 @@ def mix_color(c1, c2, a):
 
 
 '''
+
+
 def intersect_ranges(*ranges):
     res = ranges[0]
     for i in ranges[1:]:
@@ -1134,6 +1161,8 @@ def intersect_ranges(*ranges):
         if res[0] > res[1]:
             return False
     return True
+
+
 '''
 
 
@@ -1147,14 +1176,18 @@ def sign(v):
 
 def count_damage(tension):
     a = int(tension ** 1.5) // 223 - (0 if tension == bow.MAX_TENSION else 20)
-    return trim_value(a, 399, 10)
+    return clip_value(a, 399, 10)
 
 
 def interpolate(x, in_min, in_max, out_min, out_max):
     return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min
 
 
+ACT_RECOUNT_EVENT = pygame.USEREVENT + 1
+
 pygame.init()
+
+pygame.time.set_timer(ACT_RECOUNT_EVENT, 500)
 
 debug = 0  # DEBUG!
 FPS = 60
@@ -1170,11 +1203,11 @@ difficulty = 1
 
 monitor_size = [pygame.display.Info().current_w, pygame.display.Info().current_h]
 DISPLAY_S = min(monitor_size)
-display = pygame.display.set_mode(monitor_size)
+display = pygame.display.set_mode(monitor_size, display=0)
 
 clock = pygame.time.Clock()
 
-PF_FINDER = AStarFinder(diagonal_movement=DiagonalMovement.always)
+PF_FINDER = AStarFinder(diagonal_movement=DiagonalMovement.only_when_no_obstacle)
 
 all_time = 0
 mouse_pos = (0, 0)
