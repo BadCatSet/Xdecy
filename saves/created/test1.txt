@@ -1,0 +1,20 @@
+b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0
+b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0
+b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0
+b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0
+b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0
+b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0
+b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0
+b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0
+b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0
+b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0
+b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0
+b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0
+b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0
+b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0
+b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0
+2
+11.5-8.5-zombie
+12.5-6.5-zombie
+1
+8.0-6.5-item_arrow.png-45

@@ -151,7 +151,7 @@ def run_menu_start():
 
 def run_menu_new_level():
     def create():
-        run_editor(level_name.get_value())
+        run_editor(f"{level_selector.get_value()[0][0]}/{level_name.get_value()}.txt")
         raise ToStartMenu
 
     def back():
@@ -160,6 +160,14 @@ def run_menu_new_level():
     menu = pygame_menu.menu.Menu(title='create new level',
                                  width=monitor_size[0], height=monitor_size[1],
                                  theme=theme)
+    level_names = []
+    for i in os.listdir('./saves'):
+        if os.path.isdir('./saves/' + i):
+            level_names.append(i)
+    level_selector = menu.add.dropselect(title='level: ',
+                                         items=list(zip(level_names, level_names)),
+                                         placeholder_add_to_selection_box=False)
+    level_selector.set_value(level_names[0])
     level_name = menu.add.text_input(title='title: ')
     menu.add.button(title='create',
                     action=create)
@@ -260,9 +268,14 @@ class NewField:
 
     def save_level(self):
         slash = '\\'
-        if self.filename not in os.listdir(f'{self.path.replace(slash, "/")}/saves/{self.filename}'):
-            os.mkdir(f'{self.path.replace(slash, "/")}/saves/{self.filename}')
-        path_to_save = f'{self.path.replace(slash, "/")}/{self.filename}'
+        level, filename = self.filename.split('/')
+        try:
+            os.mkdir(f'{self.path.replace(slash, "/")}/saves/{level}')
+        except FileExistsError:
+            pass
+        path_to_save = f'{self.path.replace(slash, "/")}/saves/{self.filename}'
+        if not os.path.exists(path_to_save):
+            open(path_to_save, mode='w')
         with open(path_to_save, mode='w', encoding='utf-8') as f:
             for line in self.field:
                 f.write(f"{' '.join(line)}\n")
@@ -322,7 +335,6 @@ def isCoordsInRect(coords: tuple[int, int], rect: tuple[int, int, int, int]):
 
 
 def run_editor(filename):
-    print(filename)
     pygame.init()
     monitor_size = (pygame.display.Info().current_w, pygame.display.Info().current_h)
     path = '\\'.join(abspath(__file__).split('\\')[:-1])
