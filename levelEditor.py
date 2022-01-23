@@ -2,6 +2,7 @@ import os
 from os.path import abspath
 
 import pygame
+import pygame_menu
 
 
 def load_image(path, scale: tuple = None, colorkey: tuple[int, int, int] = None):
@@ -16,10 +17,172 @@ def load_image(path, scale: tuple = None, colorkey: tuple[int, int, int] = None)
         exit(f'Файл {path} не найден!')
 
 
+class ToStartMenu(Exception):
+    pass
+
+
+class Assets:
+    PATH = ''
+    NAME_BACKGROUND = ['b0']
+    NAME_HARD = ['h0', 'h1', 'h2']
+    NAME_SOFT = ['s0']
+    NAME_HALF_S = ['steve', 'zombie', 'skeleton', 'spider', 'mag', 'poison', 'regeneration',
+                   'item_healing_potion', 'item_arrow']
+    NAME_QUARTER_S = ['item_gold_heart', 'item_heart']
+    NAME_ARROW = 'arrow'
+
+    def __init__(self, path, cell_s):
+        half = cell_s // 2
+        quarter = cell_s // 4
+
+        self.cell_s = cell_s
+        self.half = half
+        self.quarter = quarter
+
+        path = 'resourcepacks/' + path
+        self.PATH = path
+        for i in self.NAME_BACKGROUND + self.NAME_HARD + self.NAME_SOFT:
+            self.load_image(i, (cell_s, cell_s))
+
+        for i in self.NAME_HALF_S:
+            self.load_image(i, (half, half))
+
+        for i in self.NAME_QUARTER_S:
+            self.load_image(i, (quarter, quarter))
+
+        self.item_arrow.set_colorkey((255, 255, 255))
+        self.item_gold_heart.set_colorkey((255, 255, 255))
+        self.item_heart.set_colorkey((255, 255, 255))
+        self.item_healing_potion.set_colorkey((255, 255, 255))
+
+    def load_image(self, name, im_size=None, colorkey=None, filetype='.png'):
+        fullname = os.path.join(self.PATH, name + filetype)
+        if not os.path.isfile(fullname):
+            print(f"Файл с изображением '{fullname}' не найден")
+            terminate()
+
+        image = pygame.image.load(fullname)
+        if im_size is not None:
+            image = pygame.transform.scale(image, im_size)
+        if colorkey is not None:
+            if colorkey == -1:
+                colorkey = image.get_at((1, 1))
+            image.set_colorkey(colorkey)
+        self.__setattr__(name, image.convert_alpha())
+
+    def get_bg(self):
+        return self.NAME_BACKGROUND[0]
+
+
+def terminate():
+    pygame.quit()
+    exit()
+
+
+def load_levels(folder):
+    path = '\\'.join(abspath(__file__).split('\\')[:-1]).replace('\\', '/') + f'/saves/{folder}'
+    start_exists = False
+    levels = []
+    for file in os.listdir(f"{path}/"):
+        if os.path.isfile(f'{path}/{file}'):
+            if file == 'start.txt':
+                start_exists = True
+            else:
+                levels.append(file)
+
+    if not start_exists:
+        with open(f"{path}/start.txt", mode='w') as f:
+            print('15 7 7', file=f)
+            for level in levels:
+                print(level, file=f)
+    return levels
+
+
+def run_menu_start():
+    def start_editor():
+        path = f'{level_selector.get_value()[0][0]}/{location_selector.get_value()[0][0]}'
+        try:
+            run_editor(path)
+        except ToStartMenu:
+            pass
+
+    def start_menu_new_level():
+        try:
+            run_menu_new_level()
+        except ToStartMenu:
+            pass
+
+    level_names = []
+    for i in os.listdir('./saves'):
+        if os.path.isdir('./saves/' + i):
+            level_names.append(i)
+    menu = pygame_menu.menu.Menu(title='editor',
+                                 width=monitor_size[0], height=monitor_size[1],
+                                 theme=theme)
+    menu.add.button(title='open',
+                    action=start_editor)
+    level_selector = menu.add.dropselect(title='level: ',
+                                         items=list(zip(level_names, level_names)),
+                                         placeholder_add_to_selection_box=False)
+    locations = load_levels(level_names[0])
+    location_selector = menu.add.dropselect(title='location: ',
+                                            items=list(zip(locations, locations)),
+                                            placeholder_add_to_selection_box=False)
+    menu.add.label(title='')
+    menu.add.button(title='new level',
+                    action=start_menu_new_level)
+    menu.add.button(title='quit',
+                    action=terminate)
+    level_selector.set_value(level_names[0])
+    location_selector.set_value(locations[0])
+    while True:
+        clock.tick(FPS)
+        events = pygame.event.get()
+
+        for event in events:
+            if event.type == pygame.QUIT:
+                terminate()
+            if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                terminate()
+        menu.draw(display)
+        menu.update(events)
+        pygame.display.flip()
+
+
+def run_menu_new_level():
+    def create():
+        run_editor(level_name.get_value())
+        raise ToStartMenu
+
+    def back():
+        raise ToStartMenu
+
+    menu = pygame_menu.menu.Menu(title='create new level',
+                                 width=monitor_size[0], height=monitor_size[1],
+                                 theme=theme)
+    level_name = menu.add.text_input(title='title: ')
+    menu.add.button(title='create',
+                    action=create)
+    menu.add.button(title='back',
+                    action=back)
+    while True:
+        clock.tick(FPS)
+        events = pygame.event.get()
+
+        for event in events:
+            if event.type == pygame.QUIT:
+                terminate()
+            if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                back()
+        menu.draw(display)
+        menu.update(events)
+        pygame.display.flip()
+
+
 class NewField:
-    def __init__(self, monitor_size, path: str, save_path: str):
-        self.path = path
-        self.save_path = save_path
+    def __init__(self, path: str, filename: str):
+        self.path = path.replace('\\', '/')
+        self.filename = filename
         self.blocks_paths = dict()
         for i in range(9):
             self.blocks_paths[f'b{i}'] = load_image(
@@ -53,10 +216,29 @@ class NewField:
             v = pygame.transform.scale(v, (25, 25))
             v.set_colorkey((255, 255, 255))
             self.mob_map_paths[k] = v
-
-        self.field = [['b0' for _ in range(15)] for _ in range(15)]
         self.items = set()
         self.mobs = set()
+        if os.path.exists(f"{self.path}/saves/{filename}"):
+            self.field = []
+            with open(f"{self.path}/saves/{filename}", mode='rt') as f:
+                items = []
+                for i, line in enumerate(f.readlines()):
+                    if i < 15:
+                        self.field.append(line.split())
+                    else:
+                        items.append(line.strip())
+            if any(items):
+                for i in range(1, int(items[0]) + 1):
+                    new_mob = items[i].split('-')
+                    self.mobs.add((new_mob[2], float(new_mob[1]), float(new_mob[0])))
+                items = items[int(items[0]) + 1:]
+            if any(items):
+                for i in range(1, int(items[0]) + 1):
+                    new_item = items[i].split('-')
+                    self.items.add((new_item[2], float(new_item[1]), float(new_item[0])))
+        else:
+            self.field = [['b0' for _ in range(15)] for _ in range(15)]
+
         self.x0, self.y0 = ((monitor_size[1] - 750) // 2), ((monitor_size[1] - 750) // 2)
 
     def draw(self, screen: pygame.Surface):
@@ -78,9 +260,9 @@ class NewField:
 
     def save_level(self):
         slash = '\\'
-        os.mkdir(f'{self.path.replace(slash, "/")}/{self.save_path}')
-        path_to_save = f'{self.path.replace(slash, "/")}/{self.save_path}/new_level.txt'
-        print(path_to_save)
+        if self.filename not in os.listdir(f'{self.path.replace(slash, "/")}/saves/{self.filename}'):
+            os.mkdir(f'{self.path.replace(slash, "/")}/saves/{self.filename}')
+        path_to_save = f'{self.path.replace(slash, "/")}/{self.filename}'
         with open(path_to_save, mode='w', encoding='utf-8') as f:
             for line in self.field:
                 f.write(f"{' '.join(line)}\n")
@@ -139,12 +321,13 @@ def isCoordsInRect(coords: tuple[int, int], rect: tuple[int, int, int, int]):
            coords[1] in range(rect[1], rect[1] + rect[3] + 1)
 
 
-def main(save_path):
+def run_editor(filename):
+    print(filename)
     pygame.init()
     monitor_size = (pygame.display.Info().current_w, pygame.display.Info().current_h)
     path = '\\'.join(abspath(__file__).split('\\')[:-1])
 
-    new_field = NewField(monitor_size, path, save_path)
+    new_field = NewField(path, filename)
     field_rect = new_field.get_rect()
 
     exitButton = TextButton("Выйти", monitor_size[0] - 100, 20, 30)
@@ -186,7 +369,7 @@ def main(save_path):
         clock.tick(FPS)
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
-                running = False
+                terminate()
             if event.type == pygame.MOUSEBUTTONDOWN:
                 if event.button == pygame.BUTTON_LEFT:
                     if isCoordsInRect(event.pos, new_field.get_rect()):
@@ -198,9 +381,10 @@ def main(save_path):
                     for text_button in text_buttons:
                         if isCoordsInRect(event.pos, text_button.get_rect()):
                             if text_button == exitButton:
-                                running = False
+                                terminate()
                             if text_button == saveButton:
                                 new_field.save_level()
+                                raise ToStartMenu
                     for block_button in block_buttons:
                         if isCoordsInRect(event.pos, block_button.get_rect()):
                             selected_block = block_button.name
@@ -232,6 +416,26 @@ def main(save_path):
         pygame.display.flip()
 
 
-if __name__ == '__main__':
-    main('saves/created/')
-    pygame.quit()
+if __name__ == "__main__":
+    pygame.init()
+    monitor_size = pygame.display.Info().current_w, pygame.display.Info().current_h
+    display = pygame.display.set_mode(monitor_size)
+    clock = pygame.time.Clock()
+    FPS = 60
+
+    theme = pygame_menu.themes.THEME_BLUE.copy()
+    theme.title_bar_style = pygame_menu.themes.MENUBAR_STYLE_SIMPLE
+    theme.title_background_color = 50, 50, 50
+    theme.title_font_color = 255, 20, 19
+    theme.title_font_shadow = False
+    theme.title_font = pygame_menu.font.FONT_OPEN_SANS_BOLD
+
+    theme.widget_font_size = 40
+    theme.background_color = 33, 33, 33
+    theme.widget_font_color = 20, 255, 236
+    theme.selection_color = 255, 236, 20
+    theme.widget_selection_effect = pygame_menu.widgets.selection.LeftArrowSelection()
+    theme.widget_font = pygame_menu.font.FONT_OPEN_SANS_BOLD
+
+    assets = Assets('standard/', 70)
+    run_menu_start()
