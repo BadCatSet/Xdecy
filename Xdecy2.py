@@ -278,9 +278,6 @@ class Entity:
         self.rect = Rect(x, y, 0.5, 0.5, enableFloat=True)
         self.image = None
 
-        self.max_cooldown_range = (0, 0)
-        self.cooldown = 0
-
         self.max_health = 0
         self.health = self.max_health
 
@@ -330,9 +327,6 @@ class Entity:
         sx, sy = self.rect.center
         return (sx - x) ** 2 + (sy - y) ** 2 < (r + 0.25) ** 2
 
-    def max_cooldown(self):
-        return random.randrange(*self.max_cooldown_range)
-
     def __repr__(self):
         return self.__dict__
 
@@ -345,8 +339,13 @@ class Enemy(Entity):
 
     def __init__(self, x, y):
         super().__init__(x, y)
+        self.max_cooldown_range = (0, 100)
+        self.cooldown = self.max_cooldown()
         self.act = []
         self.mat = []
+
+    def recount_act(self, mat):
+        self.act = find_path(mat, *self.rect.center, *pl.rect.center)
 
     def get_act(self):
         sx, sy = self.rect.topleft
@@ -358,8 +357,8 @@ class Enemy(Entity):
                 return ax + 0.5, ay + 0.5
         return pl.rect.center
 
-    def recount_act(self, mat):
-        self.act = find_path(mat, *self.rect.center, *pl.rect.center)
+    def max_cooldown(self):
+        return all_time + random.randrange(*self.max_cooldown_range)
 
     def check_death(self):
         global score
@@ -419,8 +418,7 @@ class Player(Entity):
 
 
 class Zombie(Enemy):
-    DROP_CHANCES = {'item_healing_potion': 0.1, 'item_arrow': 0.2, 'item_gold_heart': 0.1,
-                    'item_heart': 0.3}
+    DROP_CHANCES = {'item_healing_potion': 0.1, 'item_arrow': 0.2, 'item_gold_heart': 0.1, 'item_heart': 0.3}
 
     def __init__(self, x, y):
         super().__init__(x, y)
@@ -434,7 +432,7 @@ class Zombie(Enemy):
     def update(self):
         super().update()
         if self.rect.distance_squared(pl.rect) < self.RADIUS ** 2 and self.cooldown < all_time:
-            self.cooldown = all_time + self.max_cooldown()
+            self.cooldown = self.max_cooldown()
             pl.apply_damage(self.damage + random.randrange(-5, 9))
 
         act = self.get_act()
@@ -448,8 +446,7 @@ class Zombie(Enemy):
 
 
 class Skeleton(Enemy):
-    DROP_CHANCES = {'item_healing_potion': 0.1, 'item_arrow': 0.6, 'item_gold_heart': 0.05,
-                    'item_heart': 0.1}
+    DROP_CHANCES = {'item_healing_potion': 0.1, 'item_arrow': 0.6, 'item_gold_heart': 0.05, 'item_heart': 0.1}
 
     def __init__(self, x, y):
         super().__init__(x, y)
@@ -479,7 +476,7 @@ class Skeleton(Enemy):
                 for i in locations[(pl.lx, pl.ly)].enemies:
                     arrow.forbidden_damages.append(i.uid)
                 projectiles.append(arrow)
-                self.cooldown = all_time + self.max_cooldown()
+                self.cooldown = self.max_cooldown()
         else:
             act = self.get_act()
             dx = clip_value(act[0] - self.rect.centerx, self.speed, -self.speed)
@@ -491,8 +488,7 @@ class Skeleton(Enemy):
 
 
 class Spider(Enemy):
-    DROP_CHANCES = {'item_healing_potion': 0.2, 'item_arrow': 0.0, 'item_gold_heart': 0.2,
-                    'item_heart': 0.7}
+    DROP_CHANCES = {'item_healing_potion': 0.2, 'item_arrow': 0.0, 'item_gold_heart': 0.2, 'item_heart': 0.7}
 
     def __init__(self, x, y):
         super().__init__(x, y)
@@ -508,7 +504,7 @@ class Spider(Enemy):
         super().update()
         if self.rect.distance_squared(pl.rect) < self.RADIUS ** 2:
             if self.cooldown < all_time:
-                self.cooldown = all_time + self.max_cooldown()
+                self.cooldown = self.max_cooldown()
                 pl.effects.append(Effect('health', 10000, -0.01 * difficulty, 300))
 
         dx = clip_value(pl.rect.x - self.rect.x, self.speed, -self.speed)
@@ -525,13 +521,12 @@ class Spider(Enemy):
 
 
 class Mag(Enemy):
-    DROP_CHANCES = {'item_healing_potion': 0.2, 'item_arrow': 0.1, 'item_gold_heart': 0.5,
-                    'item_heart': 0.05}
+    DROP_CHANCES = {'item_healing_potion': 0.2, 'item_arrow': 0.1, 'item_gold_heart': 0.5, 'item_heart': 0.05}
 
     def __init__(self, x, y):
         super().__init__(x, y)
         self.image = assets.mag
-        self.max_cooldown_range = (2000, 3000)
+        self.max_cooldown_range = (1000, 3000)
         self.cooldown = self.max_cooldown()
         self.speed = 1.1 / FPS
         self.damage = -100 * difficulty
@@ -541,7 +536,7 @@ class Mag(Enemy):
     def update(self):
         super().update()
         if self.cooldown < all_time:
-            self.cooldown = all_time + self.max_cooldown()
+            self.cooldown = self.max_cooldown()
             multiplier = random.randrange(9, 12) / 10
             mag_circles.append(MagCircle(*pl.rect.center, self.damage * multiplier,
                                          0.5 * multiplier, self.get_detonation_time()))
@@ -866,7 +861,7 @@ def run_game(path):
                 timer = 8000
         display.blit(assets.death_screen, (0, 0))
         pygame.display.flip()
-    if pl.lx == pl.ly == 0 and pl.rect.x == pl.rect.y == 1 and shlopa_ending:
+    if pl.lx == pl.ly == 0 and 0.5 < pl.rect.x < 1.5 and 0.5 < pl.rect.y < 1.5 and shlopa_ending:
         pygame.mixer.Sound.play(assets.shlopa_sound)
         timer = 0
         while timer < 20000:
@@ -878,6 +873,7 @@ def run_game(path):
                     timer = 20000
             display.blit(assets.shlopa_screen, (0, 0))
             pygame.display.flip()
+    pygame.mixer.stop()
     raise GameOverSignal('loose')
 
 
@@ -1127,7 +1123,7 @@ def can_move(self, dx, dy, mode='cm'):
                     return False
     if 'm' in mode:
         for i in location.enemies + [pl]:
-            if i == self:
+            if i.uid == self.uid:
                 continue
             if i.rect.collide(rect):
                 return False

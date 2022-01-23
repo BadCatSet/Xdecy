@@ -1,0 +1,29 @@
+b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0
+b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0
+b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0
+b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0
+b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0
+b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0
+b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0
+b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0
+b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0
+b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0
+b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0
+b0 h1 h1 h1 h1 h1 h1 s0 h0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0
+b0 b0 b0 b0 b0 b0 b0 b0 s0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0
+b0 b0 b0 b0 b0 b0 b0 b0 h1 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0
+b0 b0 b0 b0 b0 b0 b0 b0 h1 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0
+b0 b0 b0 b0 b0 b0 b0 b0 h1 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0
+b0 b0 b0 b0 b0 b0 b0 b0 h1 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0
+b0 b0 b0 b0 b0 b0 b0 b0 h1 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0
+b0 b0 b0 b0 b0 b0 b0 b0 h1 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0
+b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0
+7
+1-13-mag
+6-13-mag
+1-18-mag
+6-18-mag
+5-5-skeleton
+15-15-skeleton
+12-15-zombie
+0

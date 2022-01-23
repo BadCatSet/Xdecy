@@ -1,0 +1,23 @@
+b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0
+b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0
+b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0
+b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0
+b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0
+b0 b0 b0 b0 b0 h0 h0 h0 h0 h0 h0 h0 h0 b0 b0 b0 b0 b0 b0 b0
+b0 b0 b0 b0 b0 s0 b0 b0 b0 b0 b0 b0 h1 b0 b0 b0 b0 b0 b0 b0
+b0 b0 b0 b0 b0 s0 b0 b0 b0 b0 b0 b0 h1 b0 b0 b0 b0 b0 b0 b0
+b0 b0 b0 b0 b0 s0 b0 b0 b0 b0 b0 b0 h1 b0 b0 b0 b0 b0 b0 b0
+b0 b0 b0 b0 b0 s0 b0 b0 b0 b0 b0 b0 h1 b0 b0 b0 b0 b0 b0 b0
+b0 b0 b0 b0 b0 s0 b0 b0 b0 b0 b0 b0 h1 b0 b0 b0 b0 b0 b0 b0
+b0 b0 b0 b0 b0 s0 b0 b0 b0 b0 b0 b0 h1 b0 b0 b0 b0 b0 b0 b0
+b0 b0 b0 b0 b0 h2 h2 h2 h2 h2 h2 h2 h1 b0 b0 b0 b0 b0 b0 b0
+b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0
+b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0
+b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0
+b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0
+b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0
+b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0
+b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0 b0
+1
+9-9-zombie
+0
